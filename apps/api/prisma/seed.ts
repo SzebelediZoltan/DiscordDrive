@@ -10,22 +10,12 @@
  * NodeNext requires.
  */
 import '../src/config/dotenv.js'
-import { randomBytes, scryptSync } from 'node:crypto'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient, Role, UserStatus } from '../src/generated/prisma/client.js'
+import { hashPassword } from '../src/lib/passwords.js'
 
 const DEFAULT_ADMIN_EMAIL = 'szebe99@gmail.com'
 const DEFAULT_ADMIN_PASSWORD = 'Harkaly88'
-
-/**
- * scrypt from the Node standard library: no dependency, and a memory-hard KDF.
- * The login path uses the same primitive via `src/lib/passwords.ts` (issue #3).
- */
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16)
-  const derived = scryptSync(password, salt, 64)
-  return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`
-}
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL
@@ -47,7 +37,7 @@ async function main(): Promise<void> {
       const admin = await prisma.user.create({
         data: {
           email,
-          passwordHash: hashPassword(password),
+          passwordHash: await hashPassword(password),
           displayName: 'DiscordDrive Admin',
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,

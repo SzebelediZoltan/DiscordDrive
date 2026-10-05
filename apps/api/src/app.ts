@@ -6,6 +6,7 @@ import { pinoHttp } from 'pino-http'
 import { loadEnv } from './config/env.js'
 import { logger } from './config/logger.js'
 import { errorHandler, notFoundHandler } from './http/error-handler.js'
+import { createAuthRouter } from './modules/auth/auth.routes.js'
 
 export function createApp(): Express {
   const env = loadEnv()
@@ -40,6 +41,10 @@ export function createApp(): Express {
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'discorddrive-api', uptimeSeconds: Math.round(process.uptime()) })
   })
+
+  // A tight JSON limit: the auth routes only ever receive credentials, so anything
+  // larger is either a bug or an attempt to make the process buffer.
+  app.use('/api/auth', express.json({ limit: '16kb' }), createAuthRouter())
 
   app.use(notFoundHandler)
   app.use(errorHandler)

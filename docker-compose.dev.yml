@@ -4,11 +4,17 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 services:
+  db:
+    # Bound to loopback only, and only in dev. The test suite and Prisma Studio need to
+    # reach Postgres from the host, and 127.0.0.1 keeps that from becoming a database
+    # listening on the LAN the moment someone runs this on a VPS.
+    ports: !override
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
+
   api:
     build:
       context: ./apps/api
       target: dev
-    # `db:generate` joins this command in issue #2, once prisma/schema.prisma exists.
     command: npm run dev
     environment:
       NODE_ENV: development
