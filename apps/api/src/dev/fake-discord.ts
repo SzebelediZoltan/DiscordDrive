@@ -149,7 +149,7 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
     res.json({ id: req.params.webhookId, name: 'fake-webhook', channel_id: `channel-${req.params.webhookId}` })
   })
 
-  app.post('/api/v10/webhooks/:webhookId/:token', (req, res) => {
+  app.post('/api/v10/webhooks/:webhookId/:token', async (req, res) => {
     const { webhookId } = req.params
     stats.webhookPosts += 1
 
@@ -191,6 +191,35 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
     }
 
     const contentType = req.headers['content-type'] ?? ''
+
+    // Discord accepts a JSON payload for a message with no attachment: content, embeds, or
+    // both. That is what a "test this webhook" button sends, so the fake has to accept it
+    // or the happy path of the whole feature is untestable.
+    if (contentType.startsWith('application/json')) {
+      const channelId = `channel-${webhookId}`
+      const messageId = `message-${randomUUID()}`
+
+      let payload: { content?: string; embeds?: unknown[] } = {}
+      try {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(chunk as Buffer)
+        payload = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      } catch {
+        res.status(400).json({ code: 50006, message: 'Invalid JSON payload' })
+        return
+      }
+
+      // Discord rejects a message with neither content nor embeds.
+      if (!payload.content && !payload.embeds?.length) {
+        res.status(400).json({ code: 50006, message: 'Cannot send an empty message' })
+        return
+      }
+
+      messages.set(messageId, { id: messageId, webhookId, channelId, attachmentIds: [], createdAt: Date.now() })
+      res.status(200).json(serializeMessage(messages.get(messageId)!))
+      return
+    }
+
     if (!contentType.startsWith('multipart/form-data')) {
       res.status(400).json({ code: 50006, message: 'Cannot send an empty message' })
       return
