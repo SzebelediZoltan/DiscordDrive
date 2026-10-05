@@ -1,0 +1,133 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens live here and nowhere else. Components must reference semantic
+ * utilities (bg-surface, text-muted, border-line) rather than raw hex values so a
+ * theme change is a one-file edit.
+ */
+@theme {
+  /* Surfaces: near-black with a blue cast, layered by elevation. */
+  --color-canvas: oklch(0.16 0.014 285);
+  --color-surface: oklch(0.2 0.017 285);
+  --color-surface-raised: oklch(0.24 0.019 285);
+  --color-surface-hover: oklch(0.28 0.021 285);
+  --color-line: oklch(0.32 0.02 285);
+
+  /* Text */
+  --color-ink: oklch(0.97 0.005 285);
+  --color-muted: oklch(0.72 0.017 285);
+  --color-faint: oklch(0.58 0.018 285);
+
+  /* Discord blurple, blended toward violet. */
+  --color-blurple: oklch(0.55 0.2 273);
+  --color-blurple-hover: oklch(0.6 0.2 273);
+  --color-blurple-soft: oklch(0.72 0.14 280);
+  --color-violet: oklch(0.62 0.21 296);
+
+  /* Status */
+  --color-positive: oklch(0.72 0.17 152);
+  --color-caution: oklch(0.78 0.16 78);
+  --color-critical: oklch(0.65 0.2 22);
+  --color-info: oklch(0.7 0.14 235);
+
+  /* Radii */
+  --radius-card: 0.875rem;
+  --radius-control: 0.625rem;
+
+  /* Motion */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Type */
+  --font-sans: 'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* A single restrained glow behind the app, rather than a flat purple wash. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 30rem at 15% -10%, color-mix(in oklch, var(--color-blurple) 22%, transparent), transparent 70%),
+      radial-gradient(45rem 25rem at 110% 10%, color-mix(in oklch, var(--color-violet) 16%, transparent), transparent 70%);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-blurple-soft);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--color-blurple) 45%, transparent);
+  }
+}
+
+@layer components {
+  /* Neon edge used by dropzones, focus rings and highlighted cards. */
+  .glow-blurple {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--color-blurple) 60%, transparent),
+      0 0 1.5rem -0.25rem color-mix(in oklch, var(--color-blurple) 55%, transparent);
+  }
+
+  .card-surface {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* Shimmer for indeterminate and in-flight progress bars. */
+  .progress-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklch, white 35%, transparent),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: dd-shimmer 1.6s var(--ease-out-quint) infinite;
+  }
+}
+
+@keyframes dd-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
