@@ -1,0 +1,49 @@
+# Development override. Replaces the built nginx frontend with the Vite dev server
+# (hot module replacement) while keeping the same Postgres service.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      target: dev
+    # `db:generate` joins this command in issue #2, once prisma/schema.prisma exists.
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    # The dev server needs no volume and no memory ceiling.
+    mem_limit: 0
+    volumes:
+      - ./apps/api:/app
+      - api_node_modules:/app/node_modules
+    tmpfs:
+      - /tmp/discorddrive:size=512m,mode=1777
+    # Exposed for direct API access while developing (curl, tests, tooling).
+    ports: !override
+      - '${API_PORT:-4000}:4000'
+
+  web:
+    build:
+      context: ./apps/web
+      target: dev
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      VITE_API_PROXY_TARGET: http://api:4000
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    # `!override` replaces the production service's `ports` list rather than merging
+    # with it, which would leave the nginx port mapping attached to the Vite server.
+    ports: !override
+      - '${WEB_DEV_PORT:-5173}:5173'
+    depends_on:
+      - api
+
+volumes:
+  # Anonymous volumes keep the container's node_modules from being masked by the
+  # bind-mounted host directory (which has none on a fresh clone, and is built for a
+  # different platform on Apple Silicon).
+  api_node_modules:
+  web_node_modules:
