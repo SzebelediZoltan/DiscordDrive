@@ -1,0 +1,356 @@
+// DiscordDrive data model — Prisma 7.
+//
+// Notes that are easy to get wrong later:
+//   * `sizeBytes` and friends are BigInt. A 32-bit integer silently truncates past
+//     2 GiB, which is exactly the range this product exists to serve.
+//   * Chunk rows carry `urlExpiresAt` so link expiry is queryable without decoding
+//     Discord's signed CDN URL at read time.
+//   * Webhook URLs and bot tokens are stored as ciphertext + IV + auth tag. Never
+//     as plaintext, and never returned by an API response.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity and access
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  /// Registered and waiting for an admin decision.
+  PENDING
+  /// Approved and able to use the product.
+  ACTIVE
+  /// Turned down by an admin.
+  REJECTED
+  /// Was approved, then suspended by an admin.
+  SUSPENDED
+}
+
+enum WaitlistStatus {
+  WAITING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  displayName  String?
+  role         Role       @default(USER)
+  status       UserStatus @default(PENDING)
+
+  /// Set the first time the user finishes the webhook setup wizard. Null forces a
+  /// redirect to /onboarding on every request.
+  onboardedAt DateTime?
+  lastLoginAt DateTime?
+  approvedAt  DateTime?
+  adminNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  waitlistEntry WaitlistEntry?
+  webhooks      Webhook[]
+  folders       Folder[]
+  files         FileObject[]
+  uploadSessions UploadSession[]
+  auditLogs     AuditLog[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model WaitlistEntry {
+  id     String         @id @default(cuid())
+  userId String         @unique
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status WaitlistStatus @default(WAITING)
+
+  /// Monotonic, assigned at insert time and never renumbered. A rejected applicant
+  /// therefore keeps their slot out of the queue.
+  position Int
+
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@index([status, position])
+  @@map("waitlist_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Storage destinations
+// ---------------------------------------------------------------------------
+
+enum WebhookTestStatus {
+  UNKNOWN
+  OK
+  FAILED
+}
+
+model Webhook {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name   String
+  /// Snowflake parsed from the webhook URL, used to build CDN and message routes.
+  webhookId String
+
+  /// AES-256-GCM. A webhook URL is a live credential: anyone holding it can post
+  /// to the user's channel.
+  webhookUrlEnc String
+  webhookUrlIv  String
+  webhookUrlTag String
+
+  /// Optional. Enables attachment URL refresh, which is the only way a stored file
+  /// survives Discord's signed-URL expiry.
+  botTokenEnc String?
+  botTokenIv  String?
+  botTokenTag String?
+
+  channelId String?
+  isDefault Boolean @default(false)
+
+  /// Largest attachment this webhook actually accepted, measured by the probe.
+  /// Discord's effective webhook ceiling is lower than its documented user limit.
+  maxChunkBytes Int?
+
+  lastTestStatus WebhookTestStatus @default(UNKNOWN)
+  lastTestedAt   DateTime?
+  lastTestError  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batches    ChunkBatch[]
+  uploadSessions UploadSession[]
+
+  @@index([userId])
+  @@map("webhooks")
+}
+
+// ---------------------------------------------------------------------------
+// Virtual file system
+// ---------------------------------------------------------------------------
+
+model Folder {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  parentId String?
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderTree")
+
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  files FileObject[]
+
+  @@unique([userId, parentId, name])
+  @@index([userId, parentId])
+  @@map("folders")
+}
+
+enum FileStatus {
+  /// Row created by `init`, no chunks stored yet.
+  PENDING
+  UPLOADING
+  COMPLETE
+  FAILED
+  /// Soft deleted; the metadata row survives so the UI can offer a restore.
+  DELETED
+}
+
+model FileObject {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  folderId String?
+  folder   Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  name         String
+  originalName String
+  /// BigInt: a 32-bit column truncates past 2 GiB.
+  sizeBytes    BigInt
+  mimeType     String
+  /// SHA-256 of the whole file, once the last chunk has been verified.
+  sha256       String?
+
+  chunkSizeBytes Int
+  chunkCount     Int
+  status         FileStatus @default(PENDING)
+
+  /// When a bot token is configured and the last proactive refresh succeeded.
+  linkHealthyAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  completedAt DateTime?
+
+  chunks Chunk[]
+  session UploadSession?
+
+  @@unique([userId, folderId, name])
+  @@index([userId, folderId, status])
+  @@index([userId, status])
+  @@index([deletedAt])
+  @@map("files")
+}
+
+/// One Discord message carries up to CHUNKS_PER_MESSAGE attachments. Modelling the
+/// message separately is what makes a single bot-token call able to repair an
+/// entire batch of freshly signed URLs.
+model ChunkBatch {
+  id        String  @id @default(cuid())
+  webhookId String
+  webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  messageId  String?
+  channelId  String?
+  /// Byte size of the whole message, for diagnostics.
+  totalBytes BigInt?
+
+  createdAt DateTime @default(now())
+  refreshedAt DateTime?
+
+  chunks Chunk[]
+
+  @@unique([webhookId, messageId])
+  @@index([webhookId, refreshedAt])
+  @@map("chunk_batches")
+}
+
+enum ChunkStatus {
+  PENDING
+  STORED
+  /// The CDN URL has expired and no bot token is available to refresh it.
+  EXPIRED
+  FAILED
+}
+
+model Chunk {
+  id     String     @id @default(cuid())
+  fileId String
+  file   FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  /// Zero-based position of this chunk within the file.
+  index     Int
+  sizeBytes BigInt
+  sha256    String?
+  status    ChunkStatus @default(PENDING)
+  attempts  Int          @default(0)
+
+  /// Signed Discord CDN URL, including its ex/is/hm parameters.
+  cdnUrl String?
+  /// Decoded from the URL's `ex` parameter, so expiry is a queryable column
+  /// rather than something to parse out of a URL on every read.
+  urlExpiresAt DateTime?
+
+  batchId String?
+  batch   ChunkBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fileId, index])
+  @@index([fileId, status])
+  @@index([batchId])
+  /// Backs the proactive refresher's sweep for links about to expire.
+  @@index([urlExpiresAt])
+  @@map("chunks")
+}
+
+enum UploadStatus {
+  ACTIVE
+  COMPLETED
+  ABORTED
+  EXPIRED
+}
+
+/// Resume state. `received` on the init response is derived from stored chunks,
+/// so a client that refreshes mid-upload re-sends only what is missing.
+model UploadSession {
+  id     String  @id @default(cuid())
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fileId String        @unique
+  file   FileObject    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  webhookId String?
+  webhook   Webhook? @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+
+  /// Client-generated id, so re-initialising the same file returns the same session.
+  clientId    String?
+  chunkSizeBytes Int
+  totalChunks Int
+  receivedChunks Int @default(0)
+  status      UploadStatus @default(ACTIVE)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  expiresAt   DateTime?
+  completedAt DateTime?
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("upload_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+enum AuditAction {
+  USER_REGISTERED
+  USER_APPROVED
+  USER_REJECTED
+  USER_SUSPENDED
+  USER_REACTIVATED
+  USER_ROLE_CHANGED
+  WEBHOOK_CREATED
+  WEBHOOK_TESTED
+  WEBHOOK_DELETED
+  UPLOAD_STARTED
+  UPLOAD_COMPLETED
+  UPLOAD_ABORTED
+  FILE_DELETED
+  LINK_REFRESHED
+  LINK_EXPIRED
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action AuditAction
+  /// Free-form JSON. Must never contain a webhook URL or bot token.
+  meta    Json?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}

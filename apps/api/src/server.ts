@@ -1,3 +1,8 @@
+// Must stay first: loads the repo-root .env before anything reads process.env.
+import './config/dotenv.js'
+// Second: starts the fake Discord server and repoints DISCORD_API_BASE before the
+// environment is read and cached. See the module for why ordering matters.
+import './dev/bootstrap-fake-discord.js'
 import { createServer } from 'node:http'
 import { createApp } from './app.js'
 import { loadEnv } from './config/env.js'
