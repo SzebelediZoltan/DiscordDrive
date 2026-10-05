@@ -78,6 +78,8 @@ const schema = z.object({
   FAKE_DISCORD_PORT: int(4001, 1, 65535),
   /** Simulated CDN link lifetime in seconds. 0 means links are born expired, for tests. */
   FAKE_DISCORD_LINK_TTL_S: int(3600, 0, 60 * 60 * 24 * 30),
+  /** Token the fake Discord server demands on the bot-authenticated read route. */
+  FAKE_DISCORD_BOT_TOKEN: z.string().default('test-bot-token'),
 })
 
 export type Env = z.infer<typeof schema>

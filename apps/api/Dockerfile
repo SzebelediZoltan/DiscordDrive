@@ -24,8 +24,11 @@ CMD ["npm", "run", "dev"]
 # ---------- build ----------
 FROM deps AS build
 COPY . .
-# `npm run db:generate &&` joins this RUN in issue #2, once prisma/schema.prisma exists.
-RUN npm run build
+# `prisma generate` never opens a connection, but the config resolves DATABASE_URL
+# eagerly, so a placeholder keeps the build independent of runtime configuration.
+# The real value is injected by compose and is what `migrate deploy` uses.
+RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
+    npm run db:generate && npm run build
 
 # ---------- runtime ----------
 FROM base AS runtime
@@ -34,11 +37,15 @@ ENV NODE_ENV=production \
     UPLOAD_TMP_DIR=/tmp/discorddrive
 WORKDIR /app
 
-# Prisma's generated client and the compiled output are the only runtime artifacts.
+# Prisma's compiled client and our output are the only runtime artifacts needed by
+# the server. `src/` and `prisma7.config.ts` come along because `npm run db:seed`
+# runs through tsx against the generated client, which Prisma 7 emits as TypeScript.
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/src ./src
 COPY --from=build /app/package.json ./package.json
 COPY prisma ./prisma
+COPY prisma7.config.ts ./prisma7.config.ts
 
 # The Prisma CLI is needed at boot to run `migrate deploy` before the server starts.
 RUN apk add --no-cache openssl \
@@ -51,6 +58,6 @@ EXPOSE 4000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
     CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# `npx prisma migrate deploy &&` is prepended to this command in issue #2, once
-# the schema and migrations exist.
-CMD ["node", "dist/server.js"]
+# Migrations are applied before the server starts, so a fresh `docker compose up`
+# against an empty volume comes up with a usable schema.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
