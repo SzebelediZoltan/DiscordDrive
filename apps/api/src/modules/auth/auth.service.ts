@@ -1,6 +1,7 @@
 import { Role, UserStatus } from '../../generated/prisma/client.js'
 import { prisma } from '../../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../../lib/passwords.js'
+import { registerWithWaitlist } from '../waitlist/waitlist.service.js'
 import { AppError } from '../../http/errors.js'
 import type { LoginInput, RegisterInput } from './auth.schemas.js'
 import type { AuthenticatedUser } from '../../types/auth.js'
@@ -20,7 +21,12 @@ import type { AuthenticatedUser } from '../../types/auth.js'
  */
 const DUMMY_HASH_PROMISE = hashPassword('decoy-password-for-constant-time-login')
 
-export async function register(input: RegisterInput): Promise<AuthenticatedUser> {
+/**
+ * Creates the account and its queue position in one transaction. Delegates to the
+ * waitlist module so the position is allocated under the advisory lock rather than
+ * being a separate step that could half-complete.
+ */
+export async function register(input: RegisterInput, actorIp?: string | null): Promise<AuthenticatedUser> {
   const existing = await prisma.user.findUnique({ where: { email: input.email } })
   if (existing) {
     // Reveals that the address is taken, which is intentional: registration is the one
@@ -30,20 +36,24 @@ export async function register(input: RegisterInput): Promise<AuthenticatedUser>
 
   const displayName = input.displayName ?? input.email.split('@')[0]!
 
-  // PENDING until an admin approves. Issue #4 adds the waitlist entry and the counter.
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      passwordHash: await hashPassword(input.password),
-      displayName,
-      role: Role.USER,
-      status: UserStatus.PENDING,
-    },
+  const created = await registerWithWaitlist({
+    email: input.email,
+    passwordHash: await hashPassword(input.password),
+    displayName,
+    actorIp: actorIp ?? null,
   })
 
   // No session is issued: a pending user must not be handed a token that almost every
   // route would then reject with ACCOUNT_PENDING.
-  return toAuthenticatedUser(user)
+  return {
+    id: created.id,
+    email: created.email,
+    displayName: created.displayName,
+    role: Role.USER,
+    status: UserStatus.PENDING,
+    approvedAt: null,
+    onboardedAt: null,
+  }
 }
 
 export async function login(input: LoginInput): Promise<AuthenticatedUser> {

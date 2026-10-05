@@ -7,6 +7,7 @@ import { loadEnv } from './config/env.js'
 import { logger } from './config/logger.js'
 import { errorHandler, notFoundHandler } from './http/error-handler.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
+import { createAdminRouter, createMyWaitlistRouter, createWaitlistRouter } from './modules/waitlist/waitlist.routes.js'
 
 export function createApp(): Express {
   const env = loadEnv()
@@ -45,6 +46,14 @@ export function createApp(): Express {
   // A tight JSON limit: the auth routes only ever receive credentials, so anything
   // larger is either a bug or an attempt to make the process buffer.
   app.use('/api/auth', express.json({ limit: '16kb' }), createAuthRouter())
+
+  // Public counter: reachable without a session, because it has to render on the
+  // registration page for someone who has not signed up yet.
+  app.use('/api/waitlist', createWaitlistRouter())
+  app.use('/api/me/waitlist', createMyWaitlistRouter())
+  // Admin routes take a small JSON body (a role, nothing more), so they get the same
+  // tight limit as auth rather than a global parser that would also touch chunk uploads.
+  app.use('/api/admin', express.json({ limit: '16kb' }), createAdminRouter())
 
   app.use(notFoundHandler)
   app.use(errorHandler)
