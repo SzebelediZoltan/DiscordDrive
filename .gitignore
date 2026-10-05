@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+apps/api/src/generated/
+apps/api/generated/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Test / coverage
+coverage/
+.vitest/
+
+# Temp chunk storage (must never be committed)
+.tmp/
+tmp/
+.chunks/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Docker volumes / local DB
+postgres-data/
+*.db
+*.db-journal
