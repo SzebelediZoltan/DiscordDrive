@@ -87,6 +87,10 @@ model WaitlistEntry {
   resolvedAt  DateTime?
 
   @@index([status, position])
+  // The insert already takes an advisory lock so max+1 cannot interleave. This is the
+  // backstop: if that lock is ever removed by accident, the second concurrent applicant
+  // fails loudly on insert instead of silently sharing a position with someone else.
+  @@unique([position])
   @@map("waitlist_entries")
 }
 
@@ -340,8 +344,14 @@ enum AuditAction {
 model AuditLog {
   id String @id @default(cuid())
 
+  /// The account the action was performed *on*.
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// The account that performed it. Null for pre-registration events like USER_REGISTERED.
+  /// Kept as a plain string rather than a relation so deleting a user cannot cascade away
+  /// the record of what an admin did to them.
+  actorUserId String?
 
   action AuditAction
   /// Free-form JSON. Must never contain a webhook URL or bot token.
@@ -352,5 +362,6 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([userId, createdAt])
+  @@index([actorUserId, createdAt])
   @@map("audit_logs")
 }

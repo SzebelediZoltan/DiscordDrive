@@ -66,7 +66,7 @@ export function createAuthRouter(): Router {
     const parsed = registerSchema.safeParse(req.body)
     if (!parsed.success) throw AppError.badRequest('VALIDATION_ERROR', firstIssue(parsed.error))
 
-    const user = await register(parsed.data as RegisterInput)
+    const user = await register(parsed.data as RegisterInput, req.ip)
     res.status(201).json({
       user: publicUser(user),
       pendingApproval: true,
