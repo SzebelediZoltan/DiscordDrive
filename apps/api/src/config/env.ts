@@ -80,6 +80,16 @@ const schema = z.object({
   FAKE_DISCORD_LINK_TTL_S: int(3600, 0, 60 * 60 * 24 * 30),
   /** Token the fake Discord server demands on the bot-authenticated read route. */
   FAKE_DISCORD_BOT_TOKEN: z.string().default('test-bot-token'),
+
+  /** Failed logins from one IP before that IP is locked out of the auth routes. */
+  AUTH_RATE_LIMIT_FAILURES: int(10, 1, 100),
+  AUTH_RATE_LIMIT_WINDOW_MS: int(15 * 60 * 1000, 1000, 60 * 60 * 1000),
+  /**
+   * Successful logins are capped separately and far higher. A shared NAT or office IP
+   * can legitimately log in several times a minute, but a credential-stuffing run also
+   * looks like that on the success side, so both directions are bounded.
+   */
+  AUTH_RATE_LIMIT_SUCCESSES: int(60, 1, 1000),
 })
 
 export type Env = z.infer<typeof schema>
