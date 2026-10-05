@@ -8,6 +8,7 @@ import { logger } from './config/logger.js'
 import { errorHandler, notFoundHandler } from './http/error-handler.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
 import { createAdminRouter, createMyWaitlistRouter, createWaitlistRouter } from './modules/waitlist/waitlist.routes.js'
+import { createWebhookRouter } from './modules/webhooks/webhook.routes.js'
 
 export function createApp(): Express {
   const env = loadEnv()
@@ -54,6 +55,10 @@ export function createApp(): Express {
   // Admin routes take a small JSON body (a role, nothing more), so they get the same
   // tight limit as auth rather than a global parser that would also touch chunk uploads.
   app.use('/api/admin', express.json({ limit: '16kb' }), createAdminRouter())
+
+  // Webhook setup posts only small JSON. The upload routes that follow deliberately mount
+  // their own raw stream handlers rather than relying on a global parser.
+  app.use('/api/webhooks', express.json({ limit: '64kb' }), createWebhookRouter())
 
   app.use(notFoundHandler)
   app.use(errorHandler)
