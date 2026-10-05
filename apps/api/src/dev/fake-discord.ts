@@ -151,6 +151,15 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
 
   app.post('/api/v10/webhooks/:webhookId/:token', async (req, res) => {
     const { webhookId } = req.params
+
+    // Same token check as the GET route. Without it a deleted webhook still accepts uploads
+    // on POST, which hides the single most common real failure — and makes "report a dead
+    // webhook instead of retrying it" untestable.
+    if (req.params.token.length < 10) {
+      res.status(404).json({ code: 10015, message: 'Unknown Webhook' })
+      return
+    }
+
     stats.webhookPosts += 1
 
     const rateLimitHeaders = (remaining: number, resetAt: number) => {
