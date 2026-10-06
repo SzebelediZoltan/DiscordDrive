@@ -12,7 +12,19 @@ createRoot(container).render(
   <StrictMode>
     <BrowserRouter>
       <App />
-      <Toaster position="bottom-right" richColors closeButton />
+      <Toaster
+        position="bottom-right"
+        theme="dark"
+        richColors
+        closeButton
+        toastOptions={{
+          style: {
+            background: 'var(--color-surface-raised)',
+            border: '1px solid var(--color-line)',
+            color: 'var(--color-ink)',
+          },
+        }}
+      />
     </BrowserRouter>
   </StrictMode>,
 )
