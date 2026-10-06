@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router'
 import { MotionConfig } from 'framer-motion'
 import { AppShell } from '@/components/layout/AppShell'
+import { RequireSession } from '@/components/layout/RequireSession'
 import { UploadOverlay } from '@/components/uploads/UploadOverlay'
 import { CurrentUserProvider } from '@/hooks/use-current-user'
 import { UploadQueueProvider } from '@/hooks/use-upload-queue'
@@ -17,7 +18,13 @@ export function App() {
       <CurrentUserProvider>
         <UploadQueueProvider>
           <Routes>
-            <Route element={<AppShell />}>
+            <Route
+              element={
+                <RequireSession>
+                  <AppShell />
+                </RequireSession>
+              }
+            >
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="admin" element={<AdminPage />} />

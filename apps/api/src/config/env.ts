@@ -58,6 +58,16 @@ const schema = z.object({
   DISCORD_MAX_ATTEMPTS: int(5, 1, 10),
 
   /**
+   * How long before a signed CDN link's `ex` the proactive sweeper re-reads a batch
+   * through a bot token so the link is never expired when a user opens the file. The
+   * download path does not wait for the sweeper: it re-arms lazily if it meets an
+   * *already* expired link, and only then.
+   */
+  LINK_REFRESH_LEAD_MS: int(30 * 60 * 1000, 0, 7 * 24 * 60 * 60 * 1000),
+  /** Cadence of the proactive sweep that re-reads soon-to-expire batches via the bot. */
+  LINK_REFRESH_INTERVAL_MS: int(5 * 60 * 1000, 1000, 24 * 60 * 60 * 1000),
+
+  /**
    * When 0, chunks are streamed straight through to Discord with no per-request buffer.
    * Above 0, each in-flight request may buffer this many bytes, which buys retry-ability
    * after a mid-body 429 and sha256 verification of the exact bytes we stored.

@@ -9,6 +9,7 @@ import { Semaphore, systemClock } from '../../lib/rate-limit.js'
 import { buildDispatcherDeps } from '../dispatch/gateway.js'
 import { dispatchChunks, type ChunkInput, type StoredBatch } from '../dispatch/dispatcher.js'
 import { decryptCredential } from '../webhooks/webhook.service.js'
+import { expiryFromUrl } from './attachment-url.js'
 import { parseChunkIndex, parseSizeBytes } from './upload.schemas.js'
 
 /**
@@ -253,21 +254,6 @@ function expectedChunkBytes(file: FileObject, index: number): number {
   // bookkeeping — and above 2^53 in general.
   if (index === file.chunkCount - 1) return Number(file.sizeBytes - chunkSize * BigInt(index))
   return file.chunkSizeBytes
-}
-
-/** Reads Discord's signed `ex` (expiry) parameter, hex epoch seconds, out of an attachment URL. */
-function expiryFromUrl(url: string | undefined): Date | null {
-  if (!url) return null
-  try {
-    const parsed = new URL(url, 'https://discord.com')
-    const ex = parsed.searchParams.get('ex')
-    if (ex === null) return null
-    const seconds = Number.parseInt(ex, 16)
-    if (!Number.isFinite(seconds) || seconds <= 0) return null
-    return new Date(seconds * 1000)
-  } catch {
-    return null
-  }
 }
 
 /**
@@ -683,6 +669,15 @@ export async function receiveChunk(input: {
       select: { sha256: true, batchId: true, urlExpiresAt: true },
     })
     if (alreadyStored) {
+      // Idempotency only holds while the bytes agree. Answering with the stored
+      // receipt for a *different* body would tell the client its corrupt re-send
+      // was stored, and the file would fail verification on download instead.
+      if (alreadyStored.sha256 !== null && alreadyStored.sha256 !== body.sha256) {
+        throw AppError.conflict(
+          'CHUNK_CONFLICT',
+          `Chunk ${index} was already stored with different contents; this upload session no longer matches the file`,
+        )
+      }
       return {
         index,
         sizeBytes: expected.toString(),

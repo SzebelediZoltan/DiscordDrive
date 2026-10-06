@@ -43,9 +43,10 @@ function rssMib(): number {
   return process.memoryUsage.rss() / MIB
 }
 
-/** Peak RSS observed while `fn` runs, sampled on a timer. */
-async function withPeakRss<T>(fn: () => Promise<T>): Promise<{ result: T; peakMib: number }> {
-  let peak = rssMib()
+/** Peak RSS while `fn` runs, sampled on a timer, plus the RSS it started from. */
+async function withPeakRss<T>(fn: () => Promise<T>): Promise<{ result: T; peakMib: number; baselineMib: number }> {
+  const baselineMib = rssMib()
+  let peak = baselineMib
   const timer = setInterval(() => {
     peak = Math.max(peak, rssMib())
   }, 5)
@@ -53,7 +54,7 @@ async function withPeakRss<T>(fn: () => Promise<T>): Promise<{ result: T; peakMi
 
   try {
     const result = await fn()
-    return { result, peakMib: Math.max(peak, rssMib()) }
+    return { result, peakMib: Math.max(peak, rssMib()), baselineMib }
   } finally {
     clearInterval(timer)
   }
@@ -120,10 +121,15 @@ describe('memory behaviour under a simulated 1 GB upload', () => {
     // Well under the limit for both.
     expect(threeGb.peakMib).toBeLessThan(COMPOSE_MEM_LIMIT_MIB)
 
-    // Three times the data must not cost three times the memory. A generous allowance:
-    // the point is that this is a plateau, not a per-file cost, so 25% extra for triple the
-    // traffic would still fail a whole-file implementation.
-    expect(threeGb.peakMib).toBeLessThan(oneGb.peakMib * 1.25)
+    // RSS is cumulative inside one process — the allocator keeps freed buffers between
+    // runs — so absolute peaks inflate run two with run one's leftover. Measuring the
+    // growth *during* each run isolates the streaming cost, which is the property under
+    // test: three times the data must not cost three times the memory. A generous 25%
+    // allowance catches a whole-file buffering implementation while keeping the
+    // assertion immune to allocator nondeterminism.
+    const oneGbGrowth = oneGb.peakMib - oneGb.baselineMib
+    const threeGbGrowth = threeGb.peakMib - threeGb.baselineMib
+    expect(threeGbGrowth).toBeLessThan(oneGbGrowth * 1.25)
   }, 180_000)
 
   it('sends 100 chunks as 10 messages of 10', async () => {

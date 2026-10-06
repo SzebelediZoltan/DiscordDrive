@@ -13,13 +13,15 @@ import type { AuthenticatedUser } from '../../types/auth.js'
  */
 
 /**
- * A hash of a value nobody will guess, used to spend the same CPU time as a real login
- * when the account does not exist.
+ * A syntactically valid scrypt record with a fixed salt, used to spend the same CPU
+ * time as a real login when the account does not exist.
  *
  * Without it, "no such user" returns in microseconds while "wrong password" takes
- * ~100ms of scrypt, and that difference is a free account-enumeration oracle.
+ * ~100ms of scrypt, and that difference is a free account-enumeration oracle. The
+ * record has to be *verified* against, not merely awaited: a precomputed hash only
+ * pays the cost once, after which the branch resolves in a microtask again.
  */
-const DUMMY_HASH_PROMISE = hashPassword('decoy-password-for-constant-time-login')
+const DUMMY_STORED_HASH = `scrypt$${'ab'.repeat(16)}$${'cd'.repeat(64)}`
 
 /**
  * Creates the account and its queue position in one transaction. Delegates to the
@@ -59,9 +61,11 @@ export async function register(input: RegisterInput, actorIp?: string | null): P
 export async function login(input: LoginInput): Promise<AuthenticatedUser> {
   const user = await prisma.user.findUnique({ where: { email: input.email } })
 
+  // Both branches run one scrypt verification, so the response time carries no
+  // information about whether the address is registered.
   const valid = user
     ? await verifyPassword(input.password, user.passwordHash)
-    : (await DUMMY_HASH_PROMISE, false)
+    : (await verifyPassword(input.password, DUMMY_STORED_HASH), false)
 
   if (!user || !valid) {
     // One message and one status for "no such account" and "wrong password", so the

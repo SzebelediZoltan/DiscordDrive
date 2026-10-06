@@ -46,6 +46,30 @@ function useCurrentUserLoader(): CurrentUserState {
   return { user, loading, refresh }
 }
 
+/**
+ * Private session copy for callers mounted outside `CurrentUserProvider`.
+ * `enabled` depends only on whether a provider exists, which never changes over a
+ * component's life, so every hook below is called unconditionally — that is what
+ * keeps this fallback rules-of-hooks compliant while still skipping the fetch.
+ */
+function useFallbackCurrentUser(enabled: boolean): CurrentUserState {
+  const [user, setUser] = useState<SessionUser | null>(null)
+  const [loading, setLoading] = useState(enabled)
+  const refresh = useCallback(async () => {
+    if (!enabled) return
+    setLoading(true)
+    try {
+      setUser(await fetchCurrentUser())
+    } finally {
+      setLoading(false)
+    }
+  }, [enabled])
+  useEffect(() => {
+    if (enabled) void refresh()
+  }, [refresh, enabled])
+  return { user, loading, refresh }
+}
+
 const CurrentUserContext = createContext<CurrentUserState | null>(null)
 
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
@@ -56,6 +80,6 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
 /** Reads the shell-level session; falls back to a private fetch when used outside a provider. */
 export function useCurrentUser(): CurrentUserState {
   const ctx = useContext(CurrentUserContext)
-  if (ctx) return ctx
-  return useCurrentUserLoader()
+  const fallback = useFallbackCurrentUser(ctx === null)
+  return ctx ?? fallback
 }

@@ -7,6 +7,7 @@ import { createServer } from 'node:http'
 import { createApp } from './app.js'
 import { loadEnv } from './config/env.js'
 import { logger } from './config/logger.js'
+import { startLinkRefreshScheduler } from './modules/files/link-refresh.service.js'
 
 const env = loadEnv()
 
@@ -16,15 +17,23 @@ if (env.ADMIN_PASSWORD === 'Harkaly88') {
   )
 }
 
-const server = createServer(createApp())
+const serve = createServer(createApp())
 
-server.listen(env.PORT, () => {
+// The proactive link sweeper is a process concern, not an app concern, so it starts here
+// rather than inside `createApp()` — tests exercise the sweep as a plain function and must
+// not inherit a background timer.
+const linkRefresh = startLinkRefreshScheduler({
+  onError: (err) => logger.error({ err }, 'link refresh sweep failed'),
+})
+
+serve.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV, fakeDiscord: env.FAKE_DISCORD }, 'discorddrive api listening')
 })
 
 function shutdown(signal: string): void {
   logger.info({ signal }, 'shutting down')
-  server.close((err) => {
+  linkRefresh.stop()
+  serve.close((err) => {
     if (err) {
       logger.error({ err }, 'error during shutdown')
       process.exit(1)

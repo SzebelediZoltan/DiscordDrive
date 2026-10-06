@@ -6,6 +6,7 @@ import { pinoHttp } from 'pino-http'
 import { loadEnv } from './config/env.js'
 import { logger } from './config/logger.js'
 import { errorHandler, notFoundHandler } from './http/error-handler.js'
+import { sameOriginGuard } from './http/same-origin-guard.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
 import { createFileRouter } from './modules/files/file.routes.js'
 import { createAdminRouter, createMyWaitlistRouter, createWaitlistRouter } from './modules/waitlist/waitlist.routes.js'
@@ -33,6 +34,10 @@ export function createApp(): Express {
   if (origins.length > 0) {
     app.use(cors({ origin: origins, credentials: true }))
   }
+
+  // CSRF: reject a mutation whose browser-supplied Origin points somewhere other
+  // than this host. Runs before any route so a forged POST never reaches a handler.
+  app.use(sameOriginGuard)
 
   app.use(pinoHttp({ logger, genReqId: (req) => req.headers['x-request-id'] ?? crypto.randomUUID() }))
   app.use(cookieParser())

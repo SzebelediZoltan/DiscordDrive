@@ -19,6 +19,7 @@ interface AuthPageProps {
 interface ApiError {
   code?: string
   message: string
+  details?: unknown
 }
 
 interface WaitlistSnapshot {
@@ -35,15 +36,51 @@ async function postJson(url: string, body: unknown): Promise<Record<string, unkn
   })
   if (!res.ok) {
     let message = 'Something went wrong, please try again'
+    let code: string | undefined
+    let details: unknown
     try {
-      const data = (await res.json()) as { error?: { code?: string; message?: string } | null }
+      const data = (await res.json()) as {
+        error?: { code?: string; message?: string; details?: unknown } | null
+      }
       if (data.error?.message) message = data.error.message
+      code = data.error?.code
+      details = data.error?.details
     } catch {
       // Unparseable body; keep the fallback message.
     }
-    throw { code: undefined, message } satisfies ApiError
+    // The code is what lets the UI tell PENDING / SUSPENDED / RATE_LIMITED apart;
+    // dropping it here made every failure look the same.
+    throw { code, message, details } satisfies ApiError
   }
   return res.json() as Promise<Record<string, unknown>>
+}
+
+function asApiError(err: unknown): ApiError {
+  if (err && typeof err === 'object' && 'message' in err) return err as ApiError
+  return { message: 'Something went wrong, please try again' }
+}
+
+/** Distinct headings so an account state reads differently from a typo. */
+function failureTitle(error: ApiError): string | null {
+  switch (error.code) {
+    case 'ACCOUNT_PENDING':
+      return 'Waiting for approval'
+    case 'ACCOUNT_SUSPENDED':
+      return 'Account suspended'
+    case 'RATE_LIMITED':
+      return 'Too many attempts'
+    case 'INVALID_CREDENTIALS':
+      return null
+    default:
+      return null
+  }
+}
+
+function retryAfterHint(error: ApiError): string | null {
+  const details = error.details as { retryAfterSeconds?: number } | null
+  if (error.code !== 'RATE_LIMITED' || typeof details?.retryAfterSeconds !== 'number') return null
+  const seconds = Math.ceil(details.retryAfterSeconds)
+  return `You can try again in ${seconds} second${seconds === 1 ? '' : 's'}.`
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -88,7 +125,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
   const { user, loading, refresh } = useCurrentUser()
 
   const [view, setView] = useState<AuthMode>(mode)
-  const [error, setError] = useState<string | null>(null)
+  const [failure, setFailure] = useState<ApiError | null>(null)
   const [busy, setBusy] = useState(false)
 
   // Sign-in fields.
@@ -119,7 +156,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
+    setFailure(null)
 
     if (signingIn) {
       setBusy(true)
@@ -128,7 +165,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
         await refresh()
         navigate('/dashboard', { replace: true })
       } catch (err) {
-        setError((err as ApiError).message)
+        setFailure(asApiError(err))
         setBusy(false)
       }
       return
@@ -152,7 +189,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
         setWaitlist(null)
       }
     } catch (err) {
-      setError((err as ApiError).message)
+      setFailure(asApiError(err))
       setBusy(false)
     }
   }
@@ -267,10 +304,15 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
               </div>
             )}
 
-            {error && (
-              <p className="rounded-(--radius-control) bg-critical/10 px-3 py-2 text-sm text-critical" role="alert">
-                {error}
-              </p>
+            {failure && (
+              <div
+                className="space-y-1 rounded-(--radius-control) bg-critical/10 px-3 py-2 text-sm text-critical"
+                role="alert"
+              >
+                {failureTitle(failure) && <p className="font-medium">{failureTitle(failure)}</p>}
+                <p>{failure.message}</p>
+                {retryAfterHint(failure) && <p className="text-xs opacity-80">{retryAfterHint(failure)}</p>}
+              </div>
             )}
 
             <Button

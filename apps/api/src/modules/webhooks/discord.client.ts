@@ -219,6 +219,67 @@ export async function getMessage(
   )
 }
 
+export interface CdnOutcome {
+  ok: boolean
+  /** HTTP status when Discord answered, 0 for a network-level failure. */
+  status: number
+  /**
+   * The raw response, only when `ok`. The caller owns reading `response.body`; nothing
+   * here buffers a byte, which is what keeps a download from assembling the file in RAM.
+   */
+  response: Response | null
+  message: string
+}
+
+/**
+ * Fetches a stored CDN attachment URL without going through `discordFetch`.
+ *
+ * `discordFetch` rewrites every path onto `DISCORD_API_BASE`, which is exactly what the
+ * API routes need and exactly wrong for the CDN: a real signed URL points at
+ * `cdn.discordapp.com`, a different host that must not be rerouted onto the API base.
+ * Relative URLs only ever occur with the fake server, where they are resolved against
+ * the API base's origin so the whole pipeline gains zero-config download support.
+ *
+ * The timeout covers reaching the headers, not the body: a streamed chunk may legitimately
+ * take far longer than that to read, and `Content-Length` is the caller's concern.
+ */
+export async function fetchAttachment(cdnUrl: string, timeoutMs = 30_000): Promise<CdnOutcome> {
+  const base = loadEnv().DISCORD_API_BASE
+  const target = cdnUrl.startsWith('/') ? new URL(cdnUrl, base) : new URL(cdnUrl)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(target, { signal: controller.signal })
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        response: null,
+        message: response.status === 404 || response.status === 403
+          ? 'This file\'s storage link has expired. A fresh link can be fetched with a bot token, or the file can be re-uploaded.'
+          : `Discord's CDN rejected the request (HTTP ${response.status})`,
+      }
+    }
+
+    return { ok: true, status: response.status, response, message: '' }
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === 'AbortError'
+    return {
+      ok: false,
+      status: 0,
+      response: null,
+      message: aborted
+        ? 'Discord\'s CDN did not respond in time. Try again in a moment.'
+        : 'Could not reach Discord\'s CDN. Check your network connection and try again.',
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export function assertNotDiscordFailure<T>(outcome: DiscordOutcome<T>, context: string): T {
   if (outcome.ok) return outcome.data
   throw AppError.upstream('DISCORD_REJECTED', `${context}: ${outcome.message}`, {
