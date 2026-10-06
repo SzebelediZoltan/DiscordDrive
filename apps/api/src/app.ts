@@ -9,6 +9,7 @@ import { errorHandler, notFoundHandler } from './http/error-handler.js'
 import { sameOriginGuard } from './http/same-origin-guard.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
 import { createFileRouter } from './modules/files/file.routes.js'
+import { createFolderRouter } from './modules/files/folder.routes.js'
 import { createAdminRouter, createMyWaitlistRouter, createWaitlistRouter } from './modules/waitlist/waitlist.routes.js'
 import { createWebhookRouter } from './modules/webhooks/webhook.routes.js'
 
@@ -69,6 +70,7 @@ export function createApp(): Express {
   // Chunk bodies are `application/octet-stream`, which `express.json()` skips without
   // reading, so the parser here only serves init/complete/abort.
   app.use('/api/files', express.json({ limit: '64kb' }), createFileRouter())
+  app.use('/api/folders', express.json({ limit: '16kb' }), createFolderRouter())
 
   app.use(notFoundHandler)
   app.use(errorHandler)

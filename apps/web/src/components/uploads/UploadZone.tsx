@@ -30,14 +30,18 @@ export function UploadZone({ onFiles, disabled = false, label = 'Drop files here
       onDragEnter={(event) => {
         event.preventDefault()
         if (disabled) return
+        // Only file-payload drags light the zone; text/image drags must not steal the page.
+        if (!event.dataTransfer.types.includes('Files')) return
         dragDepth.current += 1
         setDragging(true)
       }}
       onDragOver={(event) => {
         if (disabled) return
+        if (!event.dataTransfer.types.includes('Files')) return
         event.preventDefault()
       }}
       onDragLeave={(event) => {
+        if (!event.dataTransfer.types.includes('Files')) return
         event.preventDefault()
         dragDepth.current -= 1
         if (dragDepth.current <= 0) {
@@ -46,6 +50,7 @@ export function UploadZone({ onFiles, disabled = false, label = 'Drop files here
         }
       }}
       onDrop={(event) => {
+        if (!event.dataTransfer.types.includes('Files')) return
         event.preventDefault()
         dragDepth.current = 0
         setDragging(false)
