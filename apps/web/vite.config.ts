@@ -14,8 +14,10 @@ export default defineConfig({
     port: 5173,
     // In dev the SPA is served by Vite on a different port from the API, so the
     // dev proxy reproduces what nginx does in production: one same-origin surface.
+    // `changeOrigin` stays off so the API sees `Host: localhost:5173` — its
+    // same-origin CSRF check compares that against the browser's `Origin`.
     proxy: {
-      '/api': { target: API_TARGET, changeOrigin: true },
+      '/api': { target: API_TARGET, changeOrigin: false },
     },
   },
   build: {
