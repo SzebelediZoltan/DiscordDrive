@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { ScreenshotPlaceholder } from '@/components/brand/ScreenshotPlaceholder'
+import { ResumeCard } from '@/components/uploads/ResumeCard'
+import { UploadZone } from '@/components/uploads/UploadZone'
 import { useCurrentUser } from '@/hooks/use-current-user'
-import { cn } from '@/lib/utils'
+import { useUploadQueue } from '@/hooks/use-upload-queue'
 
 const stats = [
   { label: 'Files', hint: 'Stored in your webhook' },
@@ -12,6 +13,7 @@ const stats = [
 
 export function DashboardPage() {
   const { user } = useCurrentUser()
+  const { queue } = useUploadQueue()
 
   return (
     <div className="space-y-8">
@@ -41,16 +43,22 @@ export function DashboardPage() {
         </motion.div>
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted">Files</h2>
-        <ScreenshotPlaceholder caption="[SCREENSHOT: File manager — upload dropzone, file rows with progress bars]" />
+      <section className="space-y-4">
+        {!user ? (
+          <UploadZone disabled onFiles={() => undefined} />
+        ) : (
+          <>
+            <UploadZone onFiles={(files) => queue.enqueue(files)} />
+            <ResumeCard />
+          </>
+        )}
       </section>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {stats.map((stat) => (
           <div key={stat.label} className="card-surface p-5">
             <p className="text-2xl font-semibold text-faint">—</p>
-            <p className={cn('mt-1 text-sm font-medium text-ink')}>{stat.label}</p>
+            <p className="mt-1 text-sm font-medium text-ink">{stat.label}</p>
             <p className="text-xs text-muted">{stat.hint}</p>
           </div>
         ))}
