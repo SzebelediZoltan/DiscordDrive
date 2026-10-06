@@ -1,13 +1,30 @@
+import { Navigate, Route, Routes } from 'react-router'
+import { MotionConfig } from 'framer-motion'
+import { AppShell } from '@/components/layout/AppShell'
+import { CurrentUserProvider } from '@/hooks/use-current-user'
+import { AdminPage } from '@/pages/AdminPage'
+import { DashboardPage } from '@/pages/DashboardPage'
+import { LoginPage } from '@/pages/LoginPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
+import { RegisterPage } from '@/pages/RegisterPage'
+import { SettingsPage } from '@/pages/SettingsPage'
+
 export function App() {
   return (
-    <main className="flex min-h-dvh items-center justify-center p-8">
-      <div className="card-surface max-w-md p-8 text-center">
-        <img src="/brand/logo.png" alt="DiscordDrive" className="mx-auto h-16 w-auto" />
-        <h1 className="mt-6 text-2xl font-semibold">Scaffold online</h1>
-        <p className="mt-2 text-sm text-muted">
-          API and web services are wired together. Feature modules land in issues #2&ndash;#16.
-        </p>
-      </div>
-    </main>
+    <MotionConfig reducedMotion="user">
+      <CurrentUserProvider>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="admin" element={<AdminPage />} />
+          </Route>
+          <Route path="login" element={<LoginPage />} />
+          <Route path="register" element={<RegisterPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </CurrentUserProvider>
+    </MotionConfig>
   )
 }
