@@ -15,7 +15,7 @@ export function Logo({ to = '/' }: LogoProps) {
       className="inline-flex items-center rounded-(--radius-control) outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       aria-label="DiscordDrive home"
     >
-      <img src="/brand/logo.png" alt="" className="size-9 shrink-0 object-contain" />
+      <img src="/brand/logo.png" alt="" className="h-10 w-auto shrink-0 object-contain" />
     </Link>
   )
 }

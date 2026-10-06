@@ -15,11 +15,6 @@ interface TutorialStep {
 
 const STEPS: TutorialStep[] = [
   {
-    title: 'Drop your files',
-    body: 'Upload happens right here. Drop files anywhere on the dashed zone and the full-screen progress overlay tracks every chunk on its way to your Discord webhook.',
-    caption: '[SCREENSHOT: Upload in progress — dropzone with full-screen progress]',
-  },
-  {
     title: 'Create a Discord server',
     body: 'Open Discord and click the + icon in the left server list. Choose “Create My Own Server”, give it a name, and you are done — that server becomes your storage.',
     caption: '[SCREENSHOT: Discord — creating a server]',
@@ -28,6 +23,11 @@ const STEPS: TutorialStep[] = [
     title: 'Connect a webhook',
     body: 'In that server, go to Settings → Integrations → Webhooks, create a new webhook and copy the URL. Paste it under Settings in DiscordDrive and your files live in that channel.',
     caption: '[SCREENSHOT: Discord ... Webhooks — copying the webhook URL]',
+  },
+  {
+    title: 'Drop your files',
+    body: 'Upload happens right here. Drop files anywhere on the dashed zone and the full-screen progress overlay tracks every chunk on its way to your Discord webhook.',
+    caption: '[SCREENSHOT: Upload in progress — dropzone with full-screen progress]',
   },
 ]
 
