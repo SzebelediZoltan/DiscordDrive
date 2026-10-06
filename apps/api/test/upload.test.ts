@@ -317,6 +317,28 @@ describe('chunk upload', () => {
     expect(await prisma.chunk.count({ where: { fileId } })).toBe(3)
   })
 
+  it('rejects a re-send whose contents disagree with the stored chunk', async () => {
+    const agent = await signIn('conflict@example.com')
+    await createWebhook(agent)
+
+    const init = await initUpload(agent, { name: 'conflict.bin', sizeBytes: String(25 * MIB) })
+    const fileId = init.body.upload.fileId
+
+    // Same framing as the idempotent case: a few chunks settle onto Discord storage,
+    // then chunk 0 comes back with bytes that do not match what was stored.
+    await sendChunk(agent, fileId, 0, CHUNK)
+    await sendChunk(agent, fileId, 1, CHUNK)
+    await sendChunk(agent, fileId, 2, CHUNK)
+
+    const conflicting = await sendChunk(agent, fileId, 0, CHUNK, 200)
+
+    expect(conflicting.status).toBe(409)
+    expect(conflicting.body.error.code).toBe('CHUNK_CONFLICT')
+
+    // The stored chunk is untouched and no second chunk row sneaks in at index 0.
+    expect(await prisma.chunk.count({ where: { fileId } })).toBe(3)
+  })
+
   it('rejects a chunk that is not exactly the declared size', async () => {
     const agent = await signIn('size@example.com')
     await createWebhook(agent)

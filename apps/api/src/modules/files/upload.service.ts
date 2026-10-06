@@ -683,6 +683,15 @@ export async function receiveChunk(input: {
       select: { sha256: true, batchId: true, urlExpiresAt: true },
     })
     if (alreadyStored) {
+      // Idempotency only holds while the bytes agree. Answering with the stored
+      // receipt for a *different* body would tell the client its corrupt re-send
+      // was stored, and the file would fail verification on download instead.
+      if (alreadyStored.sha256 !== null && alreadyStored.sha256 !== body.sha256) {
+        throw AppError.conflict(
+          'CHUNK_CONFLICT',
+          `Chunk ${index} was already stored with different contents; this upload session no longer matches the file`,
+        )
+      }
       return {
         index,
         sizeBytes: expected.toString(),
