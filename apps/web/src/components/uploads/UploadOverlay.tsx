@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CheckCircle2,
@@ -6,6 +6,8 @@ import {
   ChevronUp,
   CircleSlash,
   Clock3,
+  Loader2,
+  Minus,
   Pause,
   Play,
   RotateCcw,
@@ -34,7 +36,8 @@ function useSpeed(task: UploadTask): number {
     if (!isTaskActive(task)) return
     const interval = setInterval(() => bump(), 1_000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-arm only on status change: the interval exists purely to re-render for
+    // the speed sample, so tracking the task object would restart it every tick.
   }, [task.status])
 
   const now = Date.now()
@@ -147,6 +150,7 @@ function UploadRow({ task, queue }: { task: UploadTask; queue: UploadQueue }) {
 export function UploadOverlay() {
   const { queue, tasks } = useUploadQueue()
   const [collapsed, setCollapsed] = useReducer((v: boolean) => !v, false)
+  const [hidden, setHidden] = useState(false)
 
   const visible = tasks.length > 0
   const activeCount = tasks.filter(isTaskActive).length
@@ -154,9 +158,46 @@ export function UploadOverlay() {
   const doneCount = tasks.filter((t) => t.status === 'completed').length
   const allFinished = activeCount === 0 && tasks.length > 0
 
+  // The panel must never trap the user: Escape and a backdrop click tuck it away
+  // and a pill restores it, so navigation and the login screen stay reachable
+  // while a multi-gigabyte upload is still running.
+  useEffect(() => {
+    if (!visible || hidden) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setHidden(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [visible, hidden])
+
   return (
     <AnimatePresence>
-      {visible && (
+      {visible && hidden && (
+        <motion.button
+          key="upload-pill"
+          type="button"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          transition={{ duration: 0.2 }}
+          onClick={() => setHidden(false)}
+          className="card-surface fixed right-4 bottom-4 z-50 flex items-center gap-2 px-4 py-2.5 text-sm text-ink"
+          aria-label={activeCount > 0 ? `Show uploads, ${activeCount} in progress` : 'Show uploads'}
+        >
+          {activeCount > 0 ? (
+            <Loader2 className="size-4 animate-spin text-blurple" aria-hidden />
+          ) : (
+            <CheckCircle2 className={cn('size-4', failedCount > 0 ? 'text-critical' : 'text-positive')} aria-hidden />
+          )}
+          {activeCount > 0
+            ? `Uploading ${activeCount} file${activeCount === 1 ? '' : 's'}`
+            : failedCount > 0
+              ? `${failedCount} failed · ${doneCount} done`
+              : `${doneCount} of ${tasks.length} done`}
+        </motion.button>
+      )}
+
+      {visible && !hidden && (
         <motion.div
           key="upload-overlay"
           initial={{ opacity: 0 }}
@@ -164,6 +205,9 @@ export function UploadOverlay() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-50 flex items-start justify-center bg-canvas/80 backdrop-blur-xl sm:items-center"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setHidden(true)
+          }}
         >
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -171,6 +215,9 @@ export function UploadOverlay() {
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.25 }}
             className="card-surface mx-4 my-8 w-full max-w-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Uploads"
           >
             <div className="flex items-center justify-between border-b border-border p-5">
               <div className="min-w-0">
@@ -200,6 +247,9 @@ export function UploadOverlay() {
                     Done
                   </Button>
                 )}
+                <Button size="icon-sm" variant="ghost" aria-label="Hide uploads" onClick={() => setHidden(true)}>
+                  <Minus className="size-4" aria-hidden />
+                </Button>
                 {tasks.length > 1 && (
                   <Button size="icon-sm" variant="ghost" aria-label={collapsed ? 'Expand uploads' : 'Collapse uploads'} onClick={setCollapsed}>
                     {collapsed ? <ChevronUp className="size-4" aria-hidden /> : <ChevronDown className="size-4" aria-hidden />}
