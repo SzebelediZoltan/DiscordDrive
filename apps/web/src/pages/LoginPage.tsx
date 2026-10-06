@@ -21,7 +21,9 @@ export function LoginPage() {
 
   const formError = email !== '' && !EMAIL_RE.test(email) ? 'Enter a valid email address' : null
 
-  if (user) return <Navigate to={user.onboardingComplete ? '/dashboard' : '/onboarding'} replace />
+  // Post-login landing goes to the dashboard; the onboarding gate (issue #11) reroutes
+  // there when onboarding is incomplete, so this stays correct both before and after.
+  if (user) return <Navigate to="/dashboard" replace />
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -29,8 +31,8 @@ export function LoginPage() {
     setBusy(true)
     try {
       await postJson('/api/auth/login', { email: email.trim(), password })
-      const session = await refresh()
-      navigate(session?.onboardingComplete ? '/dashboard' : '/onboarding', { replace: true })
+      await refresh()
+      navigate('/dashboard', { replace: true })
     } catch (error) {
       setFailure(asApiError(error))
       setBusy(false)

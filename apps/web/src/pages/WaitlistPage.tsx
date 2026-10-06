@@ -49,7 +49,9 @@ export function WaitlistPage() {
     if (resolved) void refresh()
   }, [resolved, refresh])
 
-  if (user) return <Navigate to={user.onboardingComplete ? '/dashboard' : '/onboarding'} replace />
+  // A freshly approved user still has a working session cookie after the queue clears;
+  // bounce to the dashboard, whose onboarding gate (issue #11) sends them onward.
+  if (user) return <Navigate to="/dashboard" replace />
 
   if (!email) {
     return (
