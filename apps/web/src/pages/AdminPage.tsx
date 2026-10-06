@@ -10,11 +10,11 @@ export function AdminPage() {
       <div className="space-y-8">
         <header className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Admin</h1>
-          <p className="text-sm text-muted">Administrator area.</p>
+          <p className="text-sm text-muted-foreground">Administrator area.</p>
         </header>
         <div className="card-surface flex flex-col items-center gap-3 p-10 text-center">
           <ShieldCheck className="size-8 text-faint" aria-hidden />
-          <p className="text-sm text-muted">This area is restricted to admins.</p>
+          <p className="text-sm text-muted-foreground">This area is restricted to admins.</p>
         </div>
       </div>
     )
@@ -24,16 +24,16 @@ export function AdminPage() {
     <div className="space-y-8">
       <header className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Admin</h1>
-        <p className="text-sm text-muted">Manage approvals, accounts and storage.</p>
+        <p className="text-sm text-muted-foreground">Manage approvals, accounts and storage.</p>
       </header>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted">Approvals</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">Approvals</h2>
         <ScreenshotPlaceholder caption="[SCREENSHOT: Admin — pending account approvals with Approve / Reject actions]" />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted">Overview</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">Overview</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           {['Users', 'Storage used', 'Webhooks'].map((label) => (
             <div key={label} className="card-surface p-5">

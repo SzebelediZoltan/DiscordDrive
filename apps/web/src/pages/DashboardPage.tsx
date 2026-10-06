@@ -20,7 +20,7 @@ export function DashboardPage() {
     <div className="space-y-8">
       <header className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Your files</h1>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-muted-foreground">
           Files live in your Discord webhook, sliced into durable chunks and indexed here.
         </p>
       </header>
@@ -34,7 +34,7 @@ export function DashboardPage() {
         >
           <div className="space-y-1">
             <h2 className="font-medium text-ink">Sign in to see your files</h2>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted-foreground">
               Your storage is private to your account. Once you sign in, files you upload appear here.
             </p>
           </div>
@@ -62,7 +62,7 @@ export function DashboardPage() {
           <div key={stat.label} className="card-surface p-5">
             <p className="text-2xl font-semibold text-faint">—</p>
             <p className="mt-1 text-sm font-medium text-ink">{stat.label}</p>
-            <p className="text-xs text-muted">{stat.hint}</p>
+            <p className="text-xs text-muted-foreground">{stat.hint}</p>
           </div>
         ))}
       </div>

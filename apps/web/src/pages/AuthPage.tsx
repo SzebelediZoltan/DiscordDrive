@@ -169,7 +169,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
           className="card-surface w-full max-w-sm space-y-3 p-8 text-center"
         >
           <h1 className="text-xl font-semibold tracking-tight text-ink">Almost there</h1>
-          <p className="text-sm leading-relaxed text-muted">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             Your account is waiting for an administrator to approve it before you can sign in.
           </p>
           {waitlist?.position != null && (
@@ -194,7 +194,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
             <h1 className="text-xl font-semibold tracking-tight text-ink">
               {signingIn ? 'Sign in to DiscordDrive' : 'Create your account'}
             </h1>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted-foreground">
               {signingIn
                 ? 'Files live in your Discord webhook — sign in to see them.'
                 : 'New accounts are approved by an administrator.'}
@@ -289,7 +289,7 @@ export function AuthPage({ mode = 'signIn' }: AuthPageProps) {
             </Button>
           </form>
 
-          <div className="mt-6 border-t border-line pt-5 text-center text-sm text-muted">
+          <div className="mt-6 border-t border-line pt-5 text-center text-sm text-muted-foreground">
             {signingIn ? (
               <>
                 New to DiscordDrive?{' '}

@@ -29,7 +29,7 @@ export function ResumeCard() {
         <History className="size-4 text-blurple-soft" aria-hidden />
         <h2 className="text-sm font-medium text-ink">Incomplete uploads from before</h2>
       </div>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-1 text-xs text-muted-foreground">
         Your chunks are safe on the server. Pick the same file again and only the missing pieces are re-sent.
       </p>
       <ul className="mt-4 space-y-2">

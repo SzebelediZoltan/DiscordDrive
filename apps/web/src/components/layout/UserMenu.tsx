@@ -51,7 +51,7 @@ export function UserMenu({ user, loading, onRefresh, className }: UserMenuProps)
             <AvatarFallback className="bg-muted text-muted-foreground">?</AvatarFallback>
           </Avatar>
           <div className="hidden min-w-0 sm:block">
-            <p className="truncate text-sm text-muted">Not signed in</p>
+            <p className="truncate text-sm text-muted-foreground">Not signed in</p>
           </div>
         </div>
         <Button asChild size="sm" variant="secondary">
@@ -89,14 +89,14 @@ export function UserMenu({ user, loading, onRefresh, className }: UserMenuProps)
           </Avatar>
           <span className="hidden min-w-0 flex-1 sm:block">
             <span className="block truncate text-sm font-medium text-ink">{user.displayName}</span>
-            <span className="block truncate text-xs text-muted">{user.email}</span>
+            <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
           </span>
           <ChevronsUpDown className="hidden size-3.5 shrink-0 text-faint sm:block" aria-hidden />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
-          <span className="block truncate text-sm text-muted">{user.email}</span>
+          <span className="block truncate text-sm text-muted-foreground">{user.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
