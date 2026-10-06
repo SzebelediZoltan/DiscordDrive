@@ -86,7 +86,7 @@ export function UploadZone({ onFiles, disabled = false, label = 'Drop files here
           <CloudUpload className="size-6" aria-hidden />
         </span>
         <span className="text-sm font-medium text-ink">{disabled ? 'Sign in to upload' : label}</span>
-        <span className="max-w-sm text-center text-xs text-muted">
+        <span className="max-w-sm text-center text-xs text-muted-foreground">
           Sliced into chunks and pushed to your Discord webhook. You can close this page and resume later.
         </span>
       </button>

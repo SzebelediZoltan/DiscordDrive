@@ -10,7 +10,7 @@ const baseLinks = [
 
 function linkClass(isActive: boolean) {
   return cn(
-    'relative flex h-9 items-center gap-2.5 rounded-(--radius-control) px-3 text-sm text-muted outline-none transition-colors',
+    'relative flex h-9 items-center gap-2.5 rounded-(--radius-control) px-3 text-sm text-muted-foreground outline-none transition-colors',
     'focus-visible:ring-2 focus-visible:ring-ring/60 hover:bg-sidebar-accent hover:text-ink',
     isActive && 'bg-sidebar-accent font-medium text-ink',
   )

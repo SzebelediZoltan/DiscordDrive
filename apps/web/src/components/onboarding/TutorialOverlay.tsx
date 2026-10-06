@@ -121,7 +121,7 @@ export function TutorialOverlay() {
                   <h2 className="mt-1 text-xl font-semibold tracking-tight text-ink">
                     {current.title}
                   </h2>
-                  <p className="mt-2 text-sm leading-relaxed text-muted">{current.body}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{current.body}</p>
                   <div className="mt-4">
                     <ScreenshotPlaceholder caption={current.caption} aspect="aspect-[16/9]" />
                   </div>

@@ -65,7 +65,7 @@ function UploadRow({ task, queue }: { task: UploadTask; queue: UploadQueue }) {
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">{task.fileName}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{formatBytes(task.sizeBytes)}</span>
             <span aria-hidden>·</span>
             <span className="inline-flex items-center gap-1">
@@ -102,7 +102,7 @@ function UploadRow({ task, queue }: { task: UploadTask; queue: UploadQueue }) {
             <Button
               size="sm"
               variant="ghost"
-              className="text-muted hover:text-critical"
+              className="text-muted-foreground hover:text-critical"
               aria-label={`Cancel ${task.fileName}`}
               onClick={() => queue.cancel(task.id)}
             >
@@ -183,14 +183,14 @@ export function UploadOverlay() {
                         : `${doneCount} of ${tasks.length} finished`
                       : 'Uploads'}
                 </h2>
-                <p className="mt-0.5 truncate text-xs text-muted">
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {failedCount > 0 && `${failedCount} failed · `}
                   {tasks.length} in this batch
                 </p>
               </div>
               <div className="flex items-center gap-1">
                 {activeCount > 0 && (
-                  <Button size="sm" variant="ghost" className="text-muted hover:text-critical" onClick={() => queue.cancelAll()}>
+                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-critical" onClick={() => queue.cancelAll()}>
                     <CircleSlash className="size-3.5" aria-hidden />
                     Cancel all
                   </Button>
