@@ -134,7 +134,9 @@ export function AdminPage() {
     }
   }
 
-  if (user && user.role !== 'ADMIN') {
+  // RequireSession already guarantees a session; the role check still has to
+  // hold for a `null` user so the admin UI can never render unauthenticated.
+  if (!user || user.role !== 'ADMIN') {
     return (
       <div className="space-y-8">
         <header className="space-y-1.5">

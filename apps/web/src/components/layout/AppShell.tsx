@@ -11,7 +11,7 @@ export function AppShell() {
   return (
     <div className="min-h-dvh">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-sidebar lg:flex">
-        <div className="flex h-14 items-center border-b border-border px-5">
+        <div className="flex h-16 items-center border-b border-border px-5">
           <Logo />
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-4">
@@ -23,7 +23,7 @@ export function AppShell() {
       </aside>
 
       <div className="lg:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-canvas/85 px-4 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-border bg-canvas/85 px-4 backdrop-blur lg:hidden">
           <MobileNav user={user} />
           <Logo />
           <div className="ml-auto">
