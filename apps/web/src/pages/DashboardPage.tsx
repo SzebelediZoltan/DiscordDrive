@@ -1,20 +1,18 @@
+import { useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
+import { FileExplorer } from '@/components/files/FileExplorer'
 import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay'
 import { ResumeCard } from '@/components/uploads/ResumeCard'
 import { UploadZone } from '@/components/uploads/UploadZone'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { useUploadQueue } from '@/hooks/use-upload-queue'
 
-const stats = [
-  { label: 'Files', hint: 'Stored in your webhook' },
-  { label: 'Used space', hint: 'Across all chunks' },
-  { label: 'Webhooks', hint: 'Connected to Discord' },
-]
-
 export function DashboardPage() {
   const { user } = useCurrentUser()
   const { queue } = useUploadQueue()
+  const [searchParams] = useSearchParams()
+  const folderId = searchParams.get('folder') === 'root' ? null : searchParams.get('folder')
 
   return (
     <div className="space-y-8">
@@ -44,28 +42,25 @@ export function DashboardPage() {
         </motion.div>
       )}
 
-      <section className="space-y-4">
-        {!user ? (
-          <UploadZone disabled onFiles={() => undefined} />
-        ) : (
-          <>
-            <UploadZone onFiles={(files) => queue.enqueue(files)} />
+      {user ? (
+        <>
+          <section className="space-y-4">
+            <UploadZone
+              label="Drop files here to upload"
+              onFiles={(files) => queue.enqueue(files, folderId)}
+            />
             <ResumeCard />
-          </>
-        )}
-      </section>
+          </section>
 
-      {user && <TutorialOverlay />}
+          <FileExplorer />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {stats.map((stat) => (
-          <div key={stat.label} className="card-surface p-5">
-            <p className="text-2xl font-semibold text-faint">—</p>
-            <p className="mt-1 text-sm font-medium text-ink">{stat.label}</p>
-            <p className="text-xs text-muted-foreground">{stat.hint}</p>
-          </div>
-        ))}
-      </div>
+          <TutorialOverlay />
+        </>
+      ) : (
+        <section className="space-y-4">
+          <UploadZone disabled onFiles={() => undefined} />
+        </section>
+      )}
     </div>
   )
 }

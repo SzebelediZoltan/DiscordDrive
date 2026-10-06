@@ -54,6 +54,8 @@ export interface UploadTask {
   /** The local File handle. Null only for uploads hydrated after a refresh. */
   file: File | null
   fileMissing: boolean
+  /** The destination folder at enqueue time; uploads land here when provided. */
+  folderId: string | null
   startedAt: number | null
   completedAt: number | null
   chunks: Map<number, ChunkProgress>
@@ -81,6 +83,7 @@ interface StoredUpload {
   fileName: string
   sizeBytes: number
   mimeType: string
+  folderId: string | null
 }
 
 function loadStored(): StoredUpload[] {
@@ -128,6 +131,7 @@ export class UploadQueue {
           file: null,
           fileMissing: true,
           clientId: stored.clientId,
+          folderId: stored.folderId ?? null,
           status: 'paused',
           id: stored.id,
         }),
@@ -151,7 +155,7 @@ export class UploadQueue {
   // Public actions
   // -------------------------------------------------------------------------
 
-  enqueue(files: File[]): void {
+  enqueue(files: File[], folderId: string | null = null): void {
     for (const file of files) {
       const task = makeTask({
         fileName: file.name,
@@ -160,6 +164,7 @@ export class UploadQueue {
         file,
         fileMissing: false,
         clientId: crypto.randomUUID(),
+        folderId,
         status: 'queued',
       })
       this.tasks.set(task.id, task)
@@ -263,6 +268,7 @@ export class UploadQueue {
       name: task.fileName,
       sizeBytes: task.sizeBytes,
       mimeType: task.mimeType,
+      ...(task.folderId ? { folderId: task.folderId } : {}),
     }
     void initUpload(body, task.clientId)
       .then(({ upload }) => {
@@ -617,6 +623,7 @@ function makeTask(input: {
   file: File | null
   fileMissing: boolean
   status: UploadStatus
+  folderId?: string | null
 }): UploadTask {
   return {
     id: input.id ?? crypto.randomUUID(),
@@ -635,6 +642,7 @@ function makeTask(input: {
     retriable: false,
     file: input.file,
     fileMissing: input.fileMissing,
+    folderId: input.folderId ?? null,
     startedAt: Date.now(),
     completedAt: null,
     chunks: new Map(),
@@ -653,6 +661,7 @@ function toStored(task: UploadTask): StoredUpload {
     fileName: task.fileName,
     sizeBytes: task.sizeBytes,
     mimeType: task.mimeType,
+    folderId: task.folderId,
   }
 }
 
