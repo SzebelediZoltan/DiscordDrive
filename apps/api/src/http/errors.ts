@@ -41,6 +41,15 @@ export class AppError extends Error {
     return new AppError(409, code, message, details)
   }
 
+  /**
+   * The resource used to exist and is still referenced, but its backing data is gone
+   * (here: a Discord CDN link that expired with no bot token to refresh it). Distinct
+   * from 404 because the caller knows it *should* be there and the fix is upstream.
+   */
+  static gone(code: string, message: string, details?: unknown): AppError {
+    return new AppError(410, code, message, details)
+  }
+
   static payloadTooLarge(code: string, message: string, details?: unknown): AppError {
     return new AppError(413, code, message, details)
   }
