@@ -7,6 +7,7 @@ import { loadEnv } from './config/env.js'
 import { logger } from './config/logger.js'
 import { errorHandler, notFoundHandler } from './http/error-handler.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
+import { createFileRouter } from './modules/files/file.routes.js'
 import { createAdminRouter, createMyWaitlistRouter, createWaitlistRouter } from './modules/waitlist/waitlist.routes.js'
 import { createWebhookRouter } from './modules/webhooks/webhook.routes.js'
 
@@ -59,6 +60,10 @@ export function createApp(): Express {
   // Webhook setup posts only small JSON. The upload routes that follow deliberately mount
   // their own raw stream handlers rather than relying on a global parser.
   app.use('/api/webhooks', express.json({ limit: '64kb' }), createWebhookRouter())
+
+  // Chunk bodies are `application/octet-stream`, which `express.json()` skips without
+  // reading, so the parser here only serves init/complete/abort.
+  app.use('/api/files', express.json({ limit: '64kb' }), createFileRouter())
 
   app.use(notFoundHandler)
   app.use(errorHandler)
