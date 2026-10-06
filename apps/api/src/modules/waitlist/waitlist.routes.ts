@@ -192,6 +192,68 @@ export function createAdminRouter(): Router {
     res.json({ user: { id: user.id, email: user.email, role: parsed.data.role } })
   })
 
+  router.get('/usage', async (_req: Request, res: Response): Promise<void> => {
+    const [activeUsers, filesByUser, bytesByUser, webhooksByUser, userCount, fileCount, storedBytes, webhookCount] =
+      await Promise.all([
+        prisma.user.findMany({
+          where: { status: 'ACTIVE' },
+          select: { id: true, email: true, displayName: true, role: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.fileObject.groupBy({
+          by: ['userId'],
+          where: { status: { not: 'DELETED' } },
+          _count: { _all: true },
+        }),
+        prisma.fileObject.groupBy({
+          by: ['userId'],
+          where: { status: { not: 'DELETED' } },
+          _sum: { sizeBytes: true },
+        }),
+        prisma.webhook.groupBy({ by: ['userId'], _count: { _all: true } }),
+        prisma.user.count({ where: { status: 'ACTIVE' } }),
+        prisma.fileObject.count({ where: { status: { not: 'DELETED' } } }),
+        prisma.fileObject.aggregate({
+          where: { status: { not: 'DELETED' } },
+          _sum: { sizeBytes: true },
+        }),
+        prisma.webhook.count(),
+      ])
+
+    const filesMap = new Map(filesByUser.map((row) => [row.userId, row._count._all]))
+    const bytesMap = new Map(bytesByUser.map((row) => [row.userId, row._sum.sizeBytes ?? 0n]))
+    const webhooksMap = new Map(webhooksByUser.map((row) => [row.userId, row._count._all]))
+
+    const rows = activeUsers
+      .map((u) => {
+        const bytes = bytesMap.get(u.id)
+        return {
+          id: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          role: u.role,
+          createdAt: u.createdAt,
+          files: filesMap.get(u.id) ?? 0,
+          storedBytes: bytes,
+          webhooks: webhooksMap.get(u.id) ?? 0,
+        }
+      })
+      .sort((a, b) => (b.storedBytes ?? 0n) > (a.storedBytes ?? 0n) ? 1 : -1)
+
+    res.json({
+      totals: {
+        users: userCount,
+        files: fileCount,
+        storedBytes: (storedBytes._sum.sizeBytes ?? 0n).toString(),
+        webhooks: webhookCount,
+      },
+      users: rows.map((row) => ({
+        ...row,
+        storedBytes: (row.storedBytes ?? 0n).toString(),
+      })),
+    })
+  })
+
   router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
     const [users, waiting, usersByStatus, uploads, storedBytes, webhookCount] = await Promise.all([
       prisma.user.count(),
