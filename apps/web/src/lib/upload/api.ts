@@ -51,19 +51,32 @@ interface ErrorBody {
   code?: string
   message?: string
   details?: unknown
+  /** The API's error envelope: `{ error: { code, message, details } }`. */
+  error?: ErrorBody | null
+}
+
+/**
+ * The API always answers with `{ error: { code, message, details } }`. Older
+ * call sites read the fields at the top level, which silently degraded every
+ * failure to `HTTP_<status>` and made REPLAN_REQUIRED / INCOMPLETE_UPLOAD
+ * unreachable, so both shapes are accepted here and the envelope wins.
+ */
+function parseErrorBody(body: ErrorBody | null): ErrorBody {
+  return body?.error ?? body ?? {}
 }
 
 async function toError(res: Response, fallback: string): Promise<UploadApiError> {
-  let body: ErrorBody | null = null
+  let raw: ErrorBody | null = null
   try {
-    body = (await res.json()) as ErrorBody
+    raw = (await res.json()) as ErrorBody
   } catch {
-    body = null
+    raw = null
   }
-  const code = body?.code ?? `HTTP_${res.status}`
-  const message = body?.message ?? fallback
+  const body = parseErrorBody(raw)
+  const code = body.code ?? `HTTP_${res.status}`
+  const message = body.message ?? fallback
   const retriable = res.status >= 500 || res.status === 429
-  return new UploadApiError(code, message, retriable, body?.details)
+  return new UploadApiError(code, message, retriable, body.details)
 }
 
 function generateClientId(): string {
@@ -137,12 +150,13 @@ export function uploadChunk(opts: {
         resolve(body as UploadReceipt)
         return
       }
+      const error = parseErrorBody(body)
       reject(
         new UploadApiError(
-          body?.code ?? `HTTP_${xhr!.status}`,
-          body?.message ?? `Chunk ${opts.index} failed (${xhr!.status})`,
+          error.code ?? `HTTP_${xhr!.status}`,
+          error.message ?? `Chunk ${opts.index} failed (${xhr!.status})`,
           xhr!.status >= 500 || xhr!.status === 429,
-          body?.details,
+          error.details,
         ),
       )
     }
