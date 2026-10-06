@@ -25,7 +25,7 @@ export function AppShell() {
       <div className="lg:pl-60">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-canvas/85 px-4 backdrop-blur lg:hidden">
           <MobileNav user={user} />
-          <Logo withWordmark={false} />
+          <Logo />
           <div className="ml-auto">
             <UserMenu user={user} loading={loading} onRefresh={refresh} />
           </div>

@@ -22,7 +22,7 @@ export function MobileNav({ user }: MobileNavProps) {
       <SheetContent side="left" className="w-72 gap-0 p-0">
         <div className="flex h-14 items-center border-b border-border px-5">
           <SheetTitle asChild>
-            <Logo withWordmark={false} />
+            <Logo />
           </SheetTitle>
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-4">

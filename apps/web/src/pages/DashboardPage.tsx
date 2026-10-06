@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
+import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay'
 import { ResumeCard } from '@/components/uploads/ResumeCard'
 import { UploadZone } from '@/components/uploads/UploadZone'
 import { useCurrentUser } from '@/hooks/use-current-user'
@@ -53,6 +54,8 @@ export function DashboardPage() {
           </>
         )}
       </section>
+
+      {user && <TutorialOverlay />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         {stats.map((stat) => (
