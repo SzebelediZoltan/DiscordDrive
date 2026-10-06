@@ -11,6 +11,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { WaitlistPage } from '@/pages/WaitlistPage'
 
 export function App() {
   return (
@@ -32,6 +33,7 @@ export function App() {
             <Route index element={<LoginPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
+            <Route path="waitlist" element={<WaitlistPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
           <UploadOverlay />

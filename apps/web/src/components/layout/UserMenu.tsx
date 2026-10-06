@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 interface UserMenuProps {
   user: SessionUser | null
   loading: boolean
-  onRefresh: () => Promise<void>
+  onRefresh: () => Promise<SessionUser | null>
   className?: string
 }
 

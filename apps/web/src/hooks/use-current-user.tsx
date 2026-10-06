@@ -14,7 +14,8 @@ export type SessionUser = {
 export interface CurrentUserState {
   user: SessionUser | null
   loading: boolean
-  refresh: () => Promise<void>
+  /** Re-reads /auth/me; resolves to the session user (null when signed out). */
+  refresh: () => Promise<SessionUser | null>
 }
 
 async function fetchCurrentUser(): Promise<SessionUser | null> {
@@ -32,10 +33,12 @@ async function fetchCurrentUser(): Promise<SessionUser | null> {
 function useCurrentUserLoader(): CurrentUserState {
   const [user, setUser] = useState<SessionUser | null>(null)
   const [loading, setLoading] = useState(true)
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<SessionUser | null> => {
     setLoading(true)
     try {
-      setUser(await fetchCurrentUser())
+      const next = await fetchCurrentUser()
+      setUser(next)
+      return next
     } finally {
       setLoading(false)
     }
@@ -55,15 +58,17 @@ function useCurrentUserLoader(): CurrentUserState {
 function useFallbackCurrentUser(enabled: boolean): CurrentUserState {
   const [user, setUser] = useState<SessionUser | null>(null)
   const [loading, setLoading] = useState(enabled)
-  const refresh = useCallback(async () => {
-    if (!enabled) return
+  const refresh = useCallback(async (): Promise<SessionUser | null> => {
+    if (!enabled) return user
     setLoading(true)
     try {
-      setUser(await fetchCurrentUser())
+      const next = await fetchCurrentUser()
+      setUser(next)
+      return next
     } finally {
       setLoading(false)
     }
-  }, [enabled])
+  }, [enabled, user])
   useEffect(() => {
     if (enabled) void refresh()
   }, [refresh, enabled])
