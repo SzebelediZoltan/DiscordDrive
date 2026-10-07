@@ -5,7 +5,7 @@ import { recordAudit } from '../../lib/audit.js'
 import { encrypt } from '../../lib/crypto.js'
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../http/errors.js'
-import { requireAuth, requireOnboarded } from '../../http/auth-middleware.js'
+import { requireAuth } from '../../http/auth-middleware.js'
 import { getWebhookInfo } from './discord.client.js'
 import { probeWebhookLimit, recordTestFailure, testWebhook } from './webhook.probe.js'
 import {
@@ -26,7 +26,11 @@ const idSchema = z.string().cuid('Invalid webhook id')
 
 export function createWebhookRouter(): Router {
   const router = Router()
-  router.use(requireAuth, requireOnboarded)
+  // Only a session is required: the onboarding wizard must create and test the first
+  // webhook *before* the account is marked as onboarded, so this router cannot sit
+  // behind requireOnboarded (that middleware would make the flow impossible). The file
+  // manager, whose routes the wizard unlocks, keeps the strict gate.
+  router.use(requireAuth)
 
   router.get('/', async (req: Request, res: Response): Promise<void> => {
     const rows = await prisma.webhook.findMany({

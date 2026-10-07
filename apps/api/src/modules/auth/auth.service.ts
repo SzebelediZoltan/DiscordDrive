@@ -1,5 +1,6 @@
-import { Role, UserStatus } from '../../generated/prisma/client.js'
+import { AuditAction, Role, UserStatus } from '../../generated/prisma/client.js'
 import { prisma } from '../../lib/prisma.js'
+import { recordAudit } from '../../lib/audit.js'
 import { hashPassword, verifyPassword } from '../../lib/passwords.js'
 import { registerWithWaitlist } from '../waitlist/waitlist.service.js'
 import { AppError } from '../../http/errors.js'
@@ -98,6 +99,41 @@ export async function getUser(userId: string): Promise<AuthenticatedUser> {
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw AppError.unauthorized()
   return toAuthenticatedUser(user)
+}
+
+/**
+ * Marks the onboarding wizard as finished. Idempotent: the audit row is written once,
+ * on the transition from incomplete to complete, so refreshing or replaying the wizard
+ * never creates a second record.
+ */
+export async function completeOnboarding(userId: string): Promise<AuthenticatedUser> {
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user) throw AppError.unauthorized()
+
+  if (user.onboardedAt !== null) return toAuthenticatedUser(user)
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.user.update({
+      where: { id: userId },
+      data: { onboardedAt: new Date() },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        role: true,
+        status: true,
+        approvedAt: true,
+        onboardedAt: true,
+      },
+    })
+    await recordAudit(
+      { action: AuditAction.ONBOARDING_COMPLETED, targetUserId: userId, actorUserId: userId },
+      tx,
+    )
+    return row
+  })
+
+  return toAuthenticatedUser(updated)
 }
 
 type UserRow = {
