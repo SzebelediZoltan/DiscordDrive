@@ -207,6 +207,8 @@ describe('credential handling', () => {
 
     expect(created.body.webhook.tokenLast4).toBe(TOKEN.slice(-4))
     expect(created.body.webhook.urlHint).not.toContain(TOKEN)
+    expect(created.body.webhook.urlHint).toHaveProperty('hint', 'https://discord.com/api/webhooks/…')
+    expect(created.body.webhook.urlHint).toHaveProperty('last4', TOKEN.slice(-4))
   })
 
   it('does not put the credential in an audit row', async () => {

@@ -11,7 +11,7 @@ export interface OnboardingWebhook {
   id: string
   name: string
   webhookId: string
-  urlHint: string
+  urlHint: { hint: string; last4: string }
   tokenLast4: string
   hasBotToken: boolean
   botTokenLast4: string | null
