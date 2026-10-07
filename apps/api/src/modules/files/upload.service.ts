@@ -545,19 +545,28 @@ export async function initUpload(input: InitUploadInput): Promise<InitUploadResu
   })
 
   if (existing) {
-    // Same name, same folder, same size: this is the client's own earlier attempt and it
-    // gets its session back with `received[]` filled in. A different size is a different
-    // file that happens to collide, which the name check below refuses.
-    if (existing.session?.status === 'ACTIVE' && existing.sizeBytes === sizeBytes) {
+    // Same name, same folder, same size, and the file is still being written: this is the
+    // client's own earlier attempt and it gets its session back with `received[]` filled in.
+    // The file status matters as much as the session's: a FAILED or DELETED file can carry
+    // an ACTIVE session row, and resuming it would hand the client a file whose every chunk
+    // POST answers "File not found". A different size is a different file that happens to
+    // collide, which the name check below refuses.
+    if (
+      existing.session?.status === 'ACTIVE' &&
+      (existing.status === FileStatus.PENDING || existing.status === FileStatus.UPLOADING) &&
+      existing.sizeBytes === sizeBytes
+    ) {
       return presentUpload(existing, await storedIndexes(existing.id))
     }
 
-    if (existing.status === FileStatus.COMPLETE || existing.status === FileStatus.DELETED) {
+    if (existing.status === FileStatus.COMPLETE) {
       throw AppError.conflict('FILE_EXISTS', 'A file with that name already exists here')
     }
 
-    // FAILED files, and sessions left behind by a process that died mid-upload, are dead
-    // weight: their chunks cannot be finished, and the name is needed by the retry.
+    // FAILED and DELETED files, and sessions left behind by a process that died mid-upload,
+    // are dead weight: their chunks cannot be finished, and the name is needed by the retry.
+    // Purging a soft-deleted file here destroys its trash row, but a fresh upload of the
+    // same name in the same folder is an outright replacement, not a restore.
     await dropStale(existing.id)
     await purgeFile(existing.id)
   }

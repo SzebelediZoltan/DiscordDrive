@@ -321,6 +321,40 @@ describe('chunk upload', () => {
     expect(done.body.upload.status).toBe('COMPLETE')
   })
 
+  it('does not resume a soft-deleted file that still has an ACTIVE session', async () => {
+    const agent = await signIn('collision@example.com')
+    await createWebhook(agent)
+
+    // A different client id from the earlier failed attempt: after a browser reload and a
+    // fresh drag, the queue never sees the old session on the client-side resume path, so
+    // the name-collision branch has to be the one that refuses dead files.
+    const first = await initUpload(agent, { name: 'gone.bin', sizeBytes: String(MIB), clientId: 'collision-c1' })
+    expect(first.status).toBe(201)
+    const oldFileId = first.body.upload.fileId
+
+    const removed = await agent.delete(`/api/files/${oldFileId}`)
+    expect(removed.status).toBe(200)
+
+    // Resuming the OLD file would make every chunk POST answer "File not found". The
+    // collision branch must purge it and create a fresh one instead.
+    const again = await initUpload(agent, { name: 'gone.bin', sizeBytes: String(MIB) })
+    expect(again.status).toBe(201)
+    expect(again.body.upload.fileId).not.toBe(oldFileId)
+    expect(again.body.upload.status).toBe('PENDING')
+
+    // The old row is gone entirely, its session and chunks cascaded.
+    const dead = await prisma.fileObject.findUnique({ where: { id: oldFileId } })
+    expect(dead).toBeNull()
+
+    // And the fresh file uploads cleanly end to end.
+    const freshFileId = again.body.upload.fileId
+    const chunk = await sendChunk(agent, freshFileId, 0, MIB)
+    expect(chunk.status).toBe(200)
+    const done = await agent.post(`/api/files/${freshFileId}/complete`)
+    expect(done.status).toBe(200)
+    expect(done.body.upload.status).toBe('COMPLETE')
+  })
+
   it('accepts a repeated send of a chunk that is already stored', async () => {
     const agent = await signIn('idempotent@example.com')
     await createWebhook(agent)
