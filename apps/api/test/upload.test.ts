@@ -294,6 +294,33 @@ describe('chunk upload', () => {
     expect(byClientIdAgain.body.upload.fileId).toBe(byClientId.body.upload.fileId)
   })
 
+  it('purges a dead session so re-initialising the same client id starts fresh', async () => {
+    const agent = await signIn('stale@example.com')
+    await createWebhook(agent)
+
+    const first = await initUpload(agent, { name: 'draft.txt', sizeBytes: String(MIB), clientId: 'stale-c1' })
+    expect(first.status).toBe(201)
+    const staleFileId = first.body.upload.fileId
+
+    // The dashboard's delete soft-deletes the file but leaves the ACTIVE session behind.
+    const removed = await agent.delete(`/api/files/${staleFileId}`)
+    expect(removed.status).toBe(200)
+
+    // Resuming would hand the client a file whose every chunk POST answers "File not found".
+    // Instead the dead session is purged and a fresh file is created on the same client id.
+    const again = await initUpload(agent, { name: 'draft.txt', sizeBytes: String(MIB), clientId: 'stale-c1' })
+    expect(again.status).toBe(201)
+    expect(again.body.upload.fileId).not.toBe(staleFileId)
+
+    // The fresh file is fully usable end to end.
+    const freshFileId = again.body.upload.fileId
+    const chunk = await sendChunk(agent, freshFileId, 0, MIB)
+    expect(chunk.status).toBe(200)
+    const done = await agent.post(`/api/files/${freshFileId}/complete`)
+    expect(done.status).toBe(200)
+    expect(done.body.upload.status).toBe('COMPLETE')
+  })
+
   it('accepts a repeated send of a chunk that is already stored', async () => {
     const agent = await signIn('idempotent@example.com')
     await createWebhook(agent)

@@ -93,6 +93,16 @@ describe('buildChunkMessage', () => {
     expect(decoded.embeds[0].description).toContain('1 chunk')
   })
 
+  it('carries no username override, which real Discord rejects with 50035', async () => {
+    const built = buildChunkMessage({ parts: [part(10)], filenamePrefix: 'doc' })
+    const parsed = parse(await readAll(built.body), built.boundary)
+    const payload = parsed.find((p) => p.name === 'payload_json')!
+
+    // Discord forbids the substrings "discord" and "clyde" (case-insensitive) in a webhook
+    // username, so the chunk posts under the webhook's own name instead of a branded one.
+    expect(JSON.parse(payload.body.toString('utf8'))).not.toHaveProperty('username')
+  })
+
   it('carries the batch prefix so a message can be traced back to its file', async () => {
     const built = buildChunkMessage({ parts: [part(10)], filenamePrefix: 'invoice-42' })
     const raw = (await readAll(built.body)).toString('utf8')

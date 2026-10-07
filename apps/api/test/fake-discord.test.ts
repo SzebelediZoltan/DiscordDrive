@@ -40,15 +40,18 @@ interface MessageShape {
 }
 
 /** Builds a multipart body by hand so the test does not depend on FormData semantics. */
-function multipart(files: { name: string; bytes: Buffer }[]): { body: Buffer; contentType: string } {
+function multipart(
+  files: { name: string; bytes: Buffer }[],
+  payload: Record<string, unknown> = { content: '' },
+): { body: Buffer; contentType: string } {
   const boundary = `----discorddrivetest${Date.now().toString(16)}`
   const parts: Buffer[] = []
 
   parts.push(
     Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\n\r\n${JSON.stringify({
-        content: '',
-      })}\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\n\r\n${JSON.stringify(
+        payload,
+      )}\r\n`,
     ),
   )
 
@@ -160,6 +163,24 @@ describe('fake discord: webhook uploads', () => {
 
     // No override at all — how DiscordDrive now posts — must pass.
     const clean = await postJson({ content: 'hello' })
+    expect(clean.status).toBe(200)
+  })
+
+  it('rejects a multipart payload with a "discord" username with 50035, as real Discord does', async () => {
+    const { body, contentType } = multipart(
+      [{ name: 'chunk-00000.bin', bytes: Buffer.from('bytes') }],
+      { content: '', username: 'DiscordDrive' },
+    )
+    const forbidden = await fetch(`${webhookUrl()}?wait=true`, {
+      method: 'POST',
+      headers: { 'content-type': contentType },
+      body,
+    })
+    expect(forbidden.status).toBe(400)
+    expect(((await forbidden.json()) as { code: number }).code).toBe(50035)
+
+    // The same upload without a username override must pass.
+    const clean = await upload([{ name: 'chunk-00000.bin', bytes: Buffer.from('bytes') }])
     expect(clean.status).toBe(200)
   })
 })

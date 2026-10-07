@@ -253,10 +253,18 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
     const messageId = `message-${randomUUID()}`
     const received: StoredAttachment[] = []
     let overflow = false
+    let payloadJson = ''
 
     const parser = Busboy({
       headers: req.headers,
       limits: { files: 10, fileSize: maxAttachmentBytes + 1, fields: 20 },
+    })
+
+    parser.on('field', (fieldname, value) => {
+      // Chunks attach a payload_json part, where a stray `username` override would be
+      // rejected by real Discord with 50035. Capture it so the rule below applies to the
+      // upload path too, not just the test-message path.
+      if (fieldname === 'payload_json') payloadJson = value
     })
 
     parser.on('file', (fieldname, stream, info) => {
@@ -307,6 +315,22 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
           message: overflow ? 'Request entity too large' : 'Cannot send an empty message',
         })
         return
+      }
+
+      // The same username rule as the JSON path: a multipart upload carrying a branded
+      // username like "DiscordDrive" is exactly what real Discord answers 50035 to.
+      if (payloadJson) {
+        try {
+          const payload = JSON.parse(payloadJson) as { username?: unknown }
+          const username = payload.username
+          if (typeof username === 'string' && /discord|clyde/i.test(username)) {
+            res.status(400).json({ code: 50035, message: 'Invalid Form Body' })
+            return
+          }
+        } catch {
+          res.status(400).json({ code: 50006, message: 'Cannot send an empty message' })
+          return
+        }
       }
 
       messages.set(messageId, {

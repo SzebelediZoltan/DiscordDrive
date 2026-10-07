@@ -54,8 +54,10 @@ export function buildChunkMessage(input: {
   // The payload must match what Discord will echo back on the created message. Chunks carry
   // their index and total so the download side can reassemble in order without relying on
   // Discord's ordering guarantees.
+  // No `username` override on purpose: Discord forbids the substrings "discord" and
+  // "clyde" (case-insensitive) in a webhook username, so a branded override like
+  // "DiscordDrive" is rejected with 50035. The chunk posts as the webhook's own name.
   const payloadJson = JSON.stringify({
-    username: 'DiscordDrive',
     content: '',
     embeds: [
       {
