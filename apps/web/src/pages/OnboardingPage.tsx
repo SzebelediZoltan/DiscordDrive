@@ -707,36 +707,49 @@ function SignedInChip({
 
 function ProgressRail({ step }: { step: number }) {
   return (
-    <div className="flex items-center gap-3 px-6 pt-6 sm:px-8" aria-hidden="true">
-      {STEPS.map((s, i) => {
-        const done = i < step
-        const active = i === step
-        return (
-          <div key={s.label} className="flex flex-1 items-center gap-3">
-            <span
-              className={cn(
-                'grid size-6 shrink-0 place-items-center rounded-full border font-mono text-xs transition-colors',
-                done && 'border-blurple bg-blurple text-white',
-                active && 'border-blurple bg-blurple/10 text-blurple-soft',
-                !done && !active && 'border-line text-faint',
-              )}
-            >
-              {done ? <Check className="size-3.5" /> : active ? i + 1 : i + 1}
-            </span>
-            <span
-              className={cn(
-                'hidden text-xs font-medium sm:block',
-                active ? 'text-ink' : done ? 'text-muted-foreground' : 'text-faint',
-              )}
-            >
-              {s.label}
-            </span>
-            {i < STEPS.length - 1 && (
-              <span className={cn('h-px flex-1', done ? 'bg-blurple/60' : 'bg-line')} />
-            )}
-          </div>
-        )
-      })}
+    <div className="px-6 pb-5 pt-6 sm:px-8" aria-hidden="true">
+      <div className="flex items-start">
+        {STEPS.map((s, i) => {
+          const done = i < step
+          const active = i === step
+          return (
+            <div key={s.label} className="flex flex-1 flex-col items-center">
+              <div className="flex w-full items-center">
+                <span
+                  className={cn(
+                    'h-px flex-1',
+                    i === 0 ? 'bg-transparent' : i <= step ? 'bg-blurple/60' : 'bg-line',
+                  )}
+                />
+                <span
+                  className={cn(
+                    'grid size-6 shrink-0 place-items-center rounded-full border font-mono text-xs transition-colors',
+                    done && 'border-blurple bg-blurple text-white',
+                    active && 'border-blurple bg-blurple/10 text-blurple-soft',
+                    !done && !active && 'border-line text-faint',
+                  )}
+                >
+                  {done ? <Check className="size-3.5" /> : i + 1}
+                </span>
+                <span
+                  className={cn(
+                    'h-px flex-1',
+                    i === STEPS.length - 1 ? 'bg-transparent' : done ? 'bg-blurple/60' : 'bg-line',
+                  )}
+                />
+              </div>
+              <span
+                className={cn(
+                  'mt-2 hidden text-center text-xs font-medium sm:block',
+                  active ? 'text-ink' : done ? 'text-muted-foreground' : 'text-faint',
+                )}
+              >
+                {s.label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
