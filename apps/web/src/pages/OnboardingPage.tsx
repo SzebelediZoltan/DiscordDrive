@@ -608,7 +608,10 @@ function ConnectedWebhook({
           </span>
           <div className="min-w-0">
             <p className="font-medium text-ink">{webhook.name}</p>
-            <p className="mt-0.5 truncate font-mono text-xs text-faint">{webhook.urlHint}</p>
+            <p className="mt-0.5 truncate font-mono text-xs text-faint">
+              {webhook.urlHint.hint}
+              <span className="text-ink/70">{webhook.urlHint.last4}</span>
+            </p>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={onReconnect}>
