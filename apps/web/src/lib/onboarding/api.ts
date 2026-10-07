@@ -42,8 +42,13 @@ async function jsonRequest<T>(url: string, init: RequestInit): Promise<T> {
     } catch {
       parsed = null
     }
+    // Every authed route answers 401 with `UNAUTHORIZED`, and session loss mid-wizard
+    // must read identically whatever op was in flight — not as a webhook- or token-level
+    // failure. Normalise the code so handlers can treat it uniformly.
+    const code =
+      res.status === 401 ? 'UNAUTHORIZED' : parsed?.error?.code ?? `HTTP_${res.status}`
     throw new AuthApiError(
-      parsed?.error?.code ?? `HTTP_${res.status}`,
+      code,
       parsed?.error?.message ?? 'Something went wrong, please try again',
       res.status,
       parsed?.error?.details,
@@ -97,6 +102,16 @@ export function completeOnboarding(): Promise<{ user: { onboardingComplete: bool
     headers: json,
     body: '{}',
   })
+}
+
+/** Ends the session that gates this wizard, so a different profile can be wired. */
+export async function logout(): Promise<void> {
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+}
+
+/** True when the failure means the session vanished rather than the op itself failing. */
+export function isSessionLost(error: unknown): boolean {
+  return asApiError(error).status === 401
 }
 
 export { asApiError }

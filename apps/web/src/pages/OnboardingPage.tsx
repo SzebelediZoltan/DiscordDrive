@@ -11,9 +11,11 @@ import {
   EyeOff,
   KeyRound,
   Loader2,
+  LogOut,
   PlugZap,
   RefreshCw,
   Sparkles,
+  UserRound,
   Webhook,
 } from 'lucide-react'
 import { useNavigate } from 'react-router'
@@ -22,7 +24,7 @@ import { ScreenshotPlaceholder } from '@/components/brand/ScreenshotPlaceholder'
 import { Button } from '@/components/ui/button'
 import type { SessionUser } from '@/hooks/use-current-user'
 import { useCurrentUser } from '@/hooks/use-current-user'
-import { asApiError } from '@/lib/onboarding/api'
+import { asApiError, isSessionLost, logout } from '@/lib/onboarding/api'
 import type { AuthApiError } from '@/lib/onboarding/api'
 import {
   completeOnboarding,
@@ -100,6 +102,7 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
   const [attachingToken, setAttachingToken] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [finishError, setFinishError] = useState<AuthApiError | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
 
   const urlInput = useRef<HTMLInputElement>(null)
   const urlIssue = webhookUrlIssue(url)
@@ -121,8 +124,13 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
           setTestedOk(stored.testedOk === true)
         }
       })
-      .catch(() => {
-        /* leave the form empty; the user can re-paste */
+      .catch((error: unknown) => {
+        if (isSessionLost(error)) {
+          void refresh()
+          navigate('/login', { replace: true })
+          return
+        }
+        /* any other failure leaves the form empty; the user can re-paste */
       })
     return () => {
       alive = false
@@ -137,6 +145,35 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
       persist({ step: next, webhookId: webhook?.id, webhookName, testedOk })
     }
     setStep(next)
+  }
+
+  /**
+   * Session loss is never a wizard failure. Whatever request was in flight just lost its
+   * right to act; take the user back to the sign-in screen where the gate explains why.
+   * Returns true when the session really is gone, so a handler can skip its own error
+   * state and drop straight to a clean redirect.
+   */
+  function sessionLost(error: unknown): boolean {
+    if (!isSessionLost(error)) return false
+    clearProgress(user.id)
+    void refresh()
+    navigate('/login', { replace: true })
+    return true
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true)
+    try {
+      await logout()
+      clearProgress(user.id)
+      await refresh()
+      navigate('/login', { replace: true })
+    } catch {
+      /* the cookie may already be gone; the redirect still lands on a clean form */
+      navigate('/login', { replace: true })
+    } finally {
+      setSigningOut(false)
+    }
   }
 
   async function saveAndVerify(event: FormEvent) {
@@ -155,6 +192,7 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
       persist({ step: 2, webhookId: created.id, webhookName: created.name, testedOk: false })
       await runTest(created.id, created.name)
     } catch (error) {
+      if (sessionLost(error)) return
       setConnectError(asApiError(error))
     } finally {
       setSaving(false)
@@ -175,6 +213,7 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
         )
       }
     } catch (error) {
+      if (sessionLost(error)) return
       setSavedTest({ ok: false, message: asApiError(error).message })
     } finally {
       setTesting(false)
@@ -192,6 +231,7 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
       setBotToken('')
       await finishAfterToken()
     } catch (error) {
+      if (sessionLost(error)) return
       setFinishError(asApiError(error))
     } finally {
       setAttachingToken(false)
@@ -207,6 +247,7 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
       await refresh()
       navigate('/dashboard', { replace: true })
     } catch (error) {
+      if (sessionLost(error)) return
       setFinishError(asApiError(error))
       setFinishing(false)
     }
@@ -235,12 +276,15 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
       />
       <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-blurple/20 blur-[120px]" />
 
-      <header className="relative z-10 flex w-full max-w-3xl items-center justify-between">
+      <header className="relative z-10 flex w-full max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="flex items-center gap-2.5">
           <Logo />
-          <span className="font-mono text-xs text-faint">SETUP</span>
+          <span className="hidden font-mono text-xs text-faint sm:block">SETUP</span>
+          <span className="rounded-full border border-line bg-surface-raised px-2 py-0.5 font-mono text-[0.65rem] tabular-nums text-faint">
+            {step + 1} / {STEPS.length}
+          </span>
         </div>
-        <p className="font-mono text-xs text-faint">STEP {step + 1} / 4</p>
+        <SignedInChip user={user} busy={signingOut} onSignOut={() => void handleSignOut()} />
       </header>
 
       <div className="relative z-10 mt-8 w-full max-w-3xl">
@@ -479,6 +523,11 @@ export function OnboardingPage({ user }: OnboardingPageProps) {
         <p className="mt-4 text-center font-mono text-xs text-faint">
           Setup takes about three minutes · your webhook URL is encrypted, never stored in the browser
         </p>
+        <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+          <UserRound className="size-3.5 text-blurple-soft" aria-hidden />
+          The webhook will be linked to{' '}
+          <span className="font-mono text-blurple-soft">{user.email}</span> — only this profile can manage it.
+        </p>
       </div>
     </div>
   )
@@ -602,6 +651,56 @@ function TestResultView({ result }: { result: TestResult }) {
         <p className="font-medium text-ink">{result.message ?? 'That webhook could not be reached.'}</p>
         {hint && <p className="mt-1 text-xs text-caution">{hint}</p>}
       </div>
+    </div>
+  )
+}
+
+function SignedInChip({
+  user,
+  busy,
+  onSignOut,
+}: {
+  user: SessionUser
+  busy: boolean
+  onSignOut: () => void
+}) {
+  const initials = (user.displayName || user.email)
+    .trim()
+    .split(/\s+/)
+    .map((word) => word[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
+  return (
+    <div className="flex items-center gap-2.5 rounded-(--radius-control) border border-line bg-surface-raised px-3 py-1.5">
+      <span
+        aria-hidden
+        className="grid size-7 shrink-0 place-items-center rounded-full border border-blurple/30 bg-blurple/10 font-mono text-[0.65rem] font-semibold text-blurple-soft"
+      >
+        {initials}
+      </span>
+      <div className="hidden min-w-0 text-left sm:block">
+        <p className="max-w-48 truncate text-xs font-medium leading-tight text-ink">
+          {user.displayName || user.email}
+        </p>
+        <p className="truncate font-mono text-[0.65rem] leading-tight text-faint">{user.email}</p>
+      </div>
+      <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onSignOut}
+        disabled={busy}
+        className="px-1.5 text-faint"
+      >
+        {busy ? (
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+        ) : (
+          <LogOut className="size-3.5" aria-hidden />
+        )}
+        <span className="hidden sm:inline">Sign out</span>
+      </Button>
     </div>
   )
 }
