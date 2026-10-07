@@ -107,7 +107,10 @@ export const updateWebhookSchema = z
  */
 export function testEmbed(input: { webhookName: string; sentBy: string }) {
   return {
-    username: 'DiscordDrive',
+    // No `username` override on purpose: Discord forbids the substrings "discord" and
+    // "clyde" (case-insensitive) in a webhook username, so a branded override like
+    // "DiscordDrive" is rejected with 400 code 50035. Posting without the field shows
+    // the webhook's own name instead, which is what the user set in Discord anyway.
     embeds: [
       {
         title: 'DiscordDrive is connected',

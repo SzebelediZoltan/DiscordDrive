@@ -91,7 +91,7 @@ const ERROR_HINTS: Record<number, string> = {
   40006: 'The webhook has been deleted. Create a new webhook in Discord and update it here.',
   40036: 'The webhook token is no longer valid. Reset it in Discord and enter the new URL.',
   50001: 'Discord rejected the request without saying why. This is usually a webhook that was deleted.',
-  50035: 'Discord rejected the request. If you just pasted this URL, make sure it is the webhook URL and not the API URL.',
+  50035: 'Discord accepted your webhook URL but rejected the message body itself — this is a DiscordDrive bug, please report it.',
   50045: 'This file is too large for Discord to accept.',
 }
 

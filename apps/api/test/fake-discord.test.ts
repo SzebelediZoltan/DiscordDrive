@@ -72,6 +72,14 @@ async function upload(files: { name: string; bytes: Buffer }[]): Promise<Respons
   return fetch(webhookUrl(), { method: 'POST', headers: { 'content-type': contentType }, body })
 }
 
+async function postJson(payload: object): Promise<Response> {
+  return fetch(webhookUrl(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
 beforeAll(async () => {
   const { app, control: c } = createFakeDiscord({ linkTtlMs: 60_000, botToken: BOT_TOKEN })
   control = c
@@ -135,6 +143,23 @@ describe('fake discord: webhook uploads', () => {
     const body = (await response.json()) as { code: number; message: string }
     expect(body.code).toBe(40005)
     expect(body.message).toMatch(/too large/i)
+  })
+
+  it('rejects a username containing "discord" or "clyde" with 50035, as real Discord does', async () => {
+    const forbidden = await postJson({ content: 'hello', username: 'DiscordDrive' })
+    expect(forbidden.status).toBe(400)
+    const body = (await forbidden.json()) as { code: number; message: string }
+    expect(body.code).toBe(50035)
+    expect(body.message).toMatch(/form body/i)
+
+    // Same rule is case-insensitive and also covers "clyde".
+    const clyde = await postJson({ content: 'hello', username: 'CLYDE-TheCurse' })
+    expect(clyde.status).toBe(400)
+    expect(((await clyde.json()) as { code: number }).code).toBe(50035)
+
+    // No override at all — how DiscordDrive now posts — must pass.
+    const clean = await postJson({ content: 'hello' })
+    expect(clean.status).toBe(200)
   })
 })
 
