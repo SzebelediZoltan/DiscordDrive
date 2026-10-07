@@ -45,6 +45,13 @@ export interface UploadTask {
   chunkCount: number
   /** Durable chunks the server has confirmed as stored. */
   received: Set<number>
+  /**
+   * Chunks the server has accepted into its buffer but that are not durable yet
+   * (`stored: false` receipts — the batch has fewer than ten pieces, so nothing has been
+   * flushed to Discord). In-memory only: they are re-sent on reload or re-plan, which is
+   * exactly right, because the buffer dies with the server process.
+   */
+  sent: Set<number>
   /** Bytes of durable chunks; this is what the progress bar reflects. */
   committedBytes: number
   /** Cumulative bytes sent over the wire (including retries) for throughput. */
@@ -277,6 +284,7 @@ export class UploadQueue {
         task.chunkSizeBytes = upload.chunkSizeBytes
         task.chunkCount = upload.chunkCount
         task.received = new Set(upload.received)
+        task.sent = new Set()
         task.committedBytes = sumReceivedBytes(task)
         task.status = 'uploading'
         this.emitEvent({ type: 'started', taskId: task.id, fileName: task.fileName })
@@ -350,12 +358,17 @@ export class UploadQueue {
     this.releaseChunk(task, index)
     if (!this.isCurrent(task)) return
     // A receipt without durable storage means the server buffered it; only the final
-    // `complete` decides whether it truly landed. Nothing to remember here.
-    if (receipt?.stored && !task.received.has(index)) {
+    // `complete` decides whether it truly landed. The buffer is authoritative for this
+    // process though — `stored:false` is still a 200, and re-sending the piece would loop
+    // forever — so the chunk counts as `sent` and the queue moves on.
+    if (receipt?.stored) {
       task.received.add(index)
+      task.sent.delete(index)
       task.committedBytes = sumReceivedBytes(task)
       task.attempts.delete(index)
       this.persist()
+    } else {
+      task.sent.add(index)
     }
     this.emitChanged()
     this.wakeUploaders()
@@ -364,6 +377,10 @@ export class UploadQueue {
   private onChunkFailure(task: UploadTask, index: number, error: unknown): void {
     this.releaseChunk(task, index)
     if (!this.isCurrent(task)) return
+    // A failure means no confirming receipt ever came back, so whatever was optimistically
+    // `sent` for this piece may not have been accepted (or the response was lost); the
+    // retry must be free to re-send it.
+    task.sent.delete(index)
     const attempts = (task.attempts.get(index) ?? 0) + 1
     task.attempts.set(index, attempts)
 
@@ -428,6 +445,7 @@ export class UploadQueue {
     this.clearTimers(task.id)
     task.fileId = null
     task.received = new Set()
+    task.sent = new Set()
     task.committedBytes = 0
     task.attempts.clear()
     task.status = 'initializing'
@@ -447,6 +465,7 @@ export class UploadQueue {
         task.chunkSizeBytes = upload.chunkSizeBytes
         task.chunkCount = upload.chunkCount
         task.received = new Set(upload.received)
+        task.sent = new Set()
         task.committedBytes = sumReceivedBytes(task)
         task.status = 'uploading'
         this.persist()
@@ -481,6 +500,7 @@ export class UploadQueue {
           const missing = (error.details as { missing?: number[] } | null)?.missing ?? []
           for (const index of missing) {
             task.received.delete(index)
+            task.sent.delete(index)
             task.attempts.set(index, 0)
           }
           task.committedBytes = sumReceivedBytes(task)
@@ -573,7 +593,9 @@ export class UploadQueue {
 
   private nextMissing(task: UploadTask): number | null {
     for (let i = 0; i < task.chunkCount; i += 1) {
-      if (!task.received.has(i) && !this.inflightOf(task).has(i) && !task.retryPending.has(i)) return i
+      if (!task.received.has(i) && !task.sent.has(i) && !this.inflightOf(task).has(i) && !task.retryPending.has(i)) {
+        return i
+      }
     }
     return null
   }
@@ -643,6 +665,7 @@ function makeTask(input: {
     chunkSizeBytes: 0,
     chunkCount: 0,
     received: new Set(),
+    sent: new Set(),
     committedBytes: 0,
     transferredBytes: 0,
     error: null,
