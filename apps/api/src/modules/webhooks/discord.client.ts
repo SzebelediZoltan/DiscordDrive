@@ -199,12 +199,23 @@ export async function sendTestMessage(
   body: unknown,
   timeoutMs?: number,
 ): Promise<DiscordOutcome<DiscordMessage>> {
-  return discordFetch<DiscordMessage>(webhook.normalized, {
+  return discordFetch<DiscordMessage>(executeWebhookUrl(webhook.normalized), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
     timeoutMs,
   })
+}
+
+/**
+ * A webhook execute answers `204 No Content` unless asked for the created message.
+ * The test button, the probe and the upload pipeline all need `channelId`/`messageId`
+ * from the response body, so the request is made waiting for it. The caller-supplied URL
+ * never carries its own query string, but the helper tolerates one anyway.
+ */
+export function executeWebhookUrl(webhookUrl: string): string {
+  const separator = webhookUrl.includes('?') ? '&' : '?'
+  return `${webhookUrl}${separator}wait=true`
 }
 
 export async function getMessage(

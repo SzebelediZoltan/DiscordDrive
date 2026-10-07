@@ -1,6 +1,6 @@
 import { Semaphore, TokenBucket, systemClock } from '../../lib/rate-limit.js'
 import { loadEnv } from '../../config/env.js'
-import { discordFetch } from '../webhooks/discord.client.js'
+import { discordFetch, executeWebhookUrl } from '../webhooks/discord.client.js'
 import type { DispatcherDeps, DiscordMessageResponse, DiscordPost, StoredBatch } from './dispatcher.js'
 
 /**
@@ -97,7 +97,7 @@ export function buildDispatcherDeps(config: DispatcherDepsConfig): DispatcherDep
       globalSemaphore!.run(() =>
         limiter.semaphore.run(async () => {
           await limiter.bucket.acquire()
-          return discordFetch<DiscordMessageResponse>(config.discordWebhookUrl, {
+          return discordFetch<DiscordMessageResponse>(executeWebhookUrl(config.discordWebhookUrl), {
             method: 'POST',
             headers: {
               'content-type': input.contentType,
