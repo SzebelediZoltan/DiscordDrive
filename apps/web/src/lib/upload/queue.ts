@@ -432,7 +432,14 @@ export class UploadQueue {
     task.attempts.clear()
     task.status = 'initializing'
     this.emitEvent({ type: 'replanned', taskId: task.id })
-    const body: InitBody = { name: task.fileName, sizeBytes: task.sizeBytes, mimeType: task.mimeType }
+    const body: InitBody = {
+      name: task.fileName,
+      sizeBytes: task.sizeBytes,
+      mimeType: task.mimeType,
+      // A re-plan restarts at a smaller chunk size; the file must still land in the
+      // folder it was dropped into rather than the root.
+      ...(task.folderId ? { folderId: task.folderId } : {}),
+    }
     void initUpload(body, task.clientId)
       .then(({ upload }) => {
         if (!this.isCurrent(task)) return
