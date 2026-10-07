@@ -329,13 +329,16 @@ describe('CRUD and ownership', () => {
     }
   })
 
-  it('requires onboarding, since the wizard is what collects these credentials', async () => {
+  it('lets a not-yet-onboarded account create a webhook, since the wizard depends on it', async () => {
     await createUser({ onboarded: false })
     await agent.post('/api/auth/login').send(CREDENTIAL)
 
     const response = await agent.post('/api/webhooks').send({ name: 'Early', url: URL })
-    expect(response.status).toBe(428)
-    expect(response.body.error.code).toBe('ONBOARDING_REQUIRED')
+    expect(response.status).toBe(201)
+    expect(response.body.webhook.name).toBe('Early')
+
+    const row = await prisma.user.findUnique({ where: { email: CREDENTIAL.email } })
+    expect(row!.onboardedAt).toBeNull()
   })
 })
 

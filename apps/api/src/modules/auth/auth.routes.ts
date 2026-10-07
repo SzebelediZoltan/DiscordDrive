@@ -11,7 +11,7 @@ import {
   type LoginInput,
   type RegisterInput,
 } from './auth.schemas.js'
-import { changePassword, login, publicUser, register } from './auth.service.js'
+import { changePassword, completeOnboarding, login, publicUser, register } from './auth.service.js'
 import { checkAuthRateLimit, recordAuthFailure, recordAuthSuccess } from './rate-limit.js'
 
 /**
@@ -137,6 +137,17 @@ export function createAuthRouter(): Router {
     // requireAuth guarantees req.user; reading it again would be a redundant query.
     res.json({ user: publicUser(req.user!) })
   })
+
+  router.post(
+    '/onboarding-complete',
+    requireAuth,
+    async (req: Request, res: Response): Promise<void> => {
+      // Idempotent: a completed wizard answers 200 with the current user rather than
+      // an error, so the SPA can call it on every visit to /onboarding safely.
+      const user = await completeOnboarding(req.user!.id)
+      res.json({ user: publicUser(user) })
+    },
+  )
 
   router.post('/change-password', requireAuth, async (req: Request, res: Response): Promise<void> => {
     const parsed = changePasswordSchema.safeParse(req.body)

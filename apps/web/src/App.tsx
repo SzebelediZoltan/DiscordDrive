@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router'
 import { MotionConfig } from 'framer-motion'
 import { AppShell } from '@/components/layout/AppShell'
 import { RequireSession } from '@/components/layout/RequireSession'
+import { OnboardingGate } from '@/components/onboarding/OnboardingGate'
 import { UploadOverlay } from '@/components/uploads/UploadOverlay'
 import { CurrentUserProvider } from '@/hooks/use-current-user'
 import { UploadQueueProvider } from '@/hooks/use-upload-queue'
@@ -34,6 +35,7 @@ export function App() {
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
             <Route path="waitlist" element={<WaitlistPage />} />
+            <Route path="onboarding" element={<OnboardingGate />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
           <UploadOverlay />

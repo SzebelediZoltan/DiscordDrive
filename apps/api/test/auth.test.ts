@@ -5,6 +5,7 @@ import { resetEnvCache } from '../src/config/env.js'
 import { prisma, resetDatabase } from './helpers/db.js'
 import { resetAuthRateLimits } from '../src/modules/auth/rate-limit.js'
 import { hashPassword } from '../src/lib/passwords.js'
+import { AuditAction } from '../src/generated/prisma/client.js'
 
 /**
  * Auth is the one place where a bug is a security bug rather than a broken feature, so
@@ -313,6 +314,55 @@ describe('POST /api/auth/change-password', () => {
     const response = await request(app)
       .post('/api/auth/change-password')
       .send({ currentPassword: 'a', newPassword: 'N3wpassword!' })
+    expect(response.status).toBe(401)
+  })
+})
+
+describe('POST /api/auth/onboarding-complete', () => {
+  it('marks an unonboarded user complete and returns the updated session user', async () => {
+    await createUser({ email: 'wizard@example.com', onboardedAt: null })
+    const agent = request.agent(app)
+    await agent.post('/api/auth/login').send({ email: 'wizard@example.com', password: 'Passw0rd123' })
+
+    const response = await agent.post('/api/auth/onboarding-complete')
+    expect(response.status).toBe(200)
+    expect(response.body.user.onboardingComplete).toBe(true)
+    expect(response.body.user.onboardedAt).not.toBeNull()
+
+    const row = await prisma.user.findUnique({ where: { email: 'wizard@example.com' } })
+    expect(row!.onboardedAt).not.toBeNull()
+  })
+
+  it('is idempotent and writes exactly one audit row', async () => {
+    await createUser({ email: 'twice@example.com', onboardedAt: null })
+    const agent = request.agent(app)
+    await agent.post('/api/auth/login').send({ email: 'twice@example.com', password: 'Passw0rd123' })
+
+    expect((await agent.post('/api/auth/onboarding-complete')).status).toBe(200)
+    expect((await agent.post('/api/auth/onboarding-complete')).status).toBe(200)
+    expect((await agent.post('/api/auth/onboarding-complete')).status).toBe(200)
+
+    const audits = await prisma.auditLog.count({
+      where: { action: AuditAction.ONBOARDING_COMPLETED },
+    })
+    expect(audits).toBe(1)
+
+    const me = await agent.get('/api/auth/me')
+    expect(me.body.user.onboardingComplete).toBe(true)
+  })
+
+  it('no-ops (200) for an already on-boarded account instead of erroring', async () => {
+    await createUser({ email: 'done@example.com', onboardedAt: new Date() })
+    const agent = request.agent(app)
+    await agent.post('/api/auth/login').send({ email: 'done@example.com', password: 'Passw0rd123' })
+
+    const response = await agent.post('/api/auth/onboarding-complete')
+    expect(response.status).toBe(200)
+    expect(response.body.user.onboardingComplete).toBe(true)
+  })
+
+  it('401s when not signed in', async () => {
+    const response = await request(app).post('/api/auth/onboarding-complete')
     expect(response.status).toBe(401)
   })
 })

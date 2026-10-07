@@ -2,7 +2,6 @@ import { useSearchParams } from 'react-router'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { FileExplorer } from '@/components/files/FileExplorer'
-import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay'
 import { ResumeCard } from '@/components/uploads/ResumeCard'
 import { UploadZone } from '@/components/uploads/UploadZone'
 import { useCurrentUser } from '@/hooks/use-current-user'
@@ -53,8 +52,6 @@ export function DashboardPage() {
           </section>
 
           <FileExplorer />
-
-          <TutorialOverlay />
         </>
       ) : (
         <section className="space-y-4">

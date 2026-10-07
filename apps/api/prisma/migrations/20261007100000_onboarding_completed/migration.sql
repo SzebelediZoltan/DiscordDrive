@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TYPE "AuditAction" ADD VALUE 'ONBOARDING_COMPLETED';
