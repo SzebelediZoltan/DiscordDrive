@@ -208,7 +208,7 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
       const channelId = `channel-${webhookId}`
       const messageId = `message-${randomUUID()}`
 
-      let payload: { content?: string; embeds?: unknown[] } = {}
+      let payload: { content?: string; embeds?: unknown[]; username?: string } = {}
       try {
         const chunks: Buffer[] = []
         for await (const chunk of req) chunks.push(chunk as Buffer)
@@ -221,6 +221,15 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
       // Discord rejects a message with neither content nor embeds.
       if (!payload.content && !payload.embeds?.length) {
         res.status(400).json({ code: 50006, message: 'Cannot send an empty message' })
+        return
+      }
+
+      // Webhook usernames must not contain "discord" or "clyde" (case-insensitive); a
+      // branded override like "DiscordDrive" is exactly the kind of payload real Discord
+      // answers 50035 to. Replicating the rule keeps that class of bug green in CI.
+      const username = payload.username
+      if (typeof username === 'string' && /discord|clyde/i.test(username)) {
+        res.status(400).json({ code: 50035, message: 'Invalid Form Body' })
         return
       }
 
