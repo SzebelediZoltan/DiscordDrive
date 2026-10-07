@@ -520,7 +520,21 @@ export async function initUpload(input: InitUploadInput): Promise<InitUploadResu
       where: { userId, clientId: body.clientId, status: 'ACTIVE' },
       include: { file: true },
     })
-    if (session) return presentUpload(session.file, await storedIndexes(session.file.id))
+    if (session) {
+      const status = session.file.status
+      // Only a file that is actually being written can resume. A session whose file ended
+      // up FAILED or DELETED is dead weight — a resume would hand the client a file whose
+      // every chunk POST answers "File not found" — so the leftovers are purged and the
+      // next init creates a fresh file, mirroring the name-collision path below.
+      if (status === FileStatus.PENDING || status === FileStatus.UPLOADING) {
+        return presentUpload(session.file, await storedIndexes(session.file.id))
+      }
+      if (status === FileStatus.FAILED || status === FileStatus.DELETED) {
+        await dropStale(session.file.id)
+        await purgeFile(session.file.id)
+      }
+      // COMPLETE cannot carry an ACTIVE session; if one ever does, the file stays untouched.
+    }
   }
 
   const webhook = await resolvePostingWebhook(userId, null)
