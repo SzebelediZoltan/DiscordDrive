@@ -6,7 +6,7 @@ import {
   type DiscordMessageResponse,
   type DiscordPost,
 } from '../src/modules/dispatch/dispatcher.js'
-import { discordFetch } from '../src/modules/webhooks/discord.client.js'
+import { discordFetch, executeWebhookUrl } from '../src/modules/webhooks/discord.client.js'
 import { resetEnvCache } from '../src/config/env.js'
 import { startFakeDiscord, type FakeDiscordHandle } from './helpers/fake-discord-server.js'
 
@@ -57,7 +57,7 @@ function makeChunks(count: number, sizeBytes: number): ChunkInput[] {
 function deps(over: Partial<DispatcherDeps> = {}): DispatcherDeps {
   return {
     post: async ({ body, contentLength, contentType }) => {
-      const outcome = await discordFetch<DiscordMessageResponse>(URL, {
+      const outcome = await discordFetch<DiscordMessageResponse>(executeWebhookUrl(URL), {
         method: 'POST',
         headers: { 'content-type': contentType, 'content-length': String(contentLength) },
         // Node's fetch refuses a stream body unless duplex is set.
@@ -216,7 +216,7 @@ describe('dispatcher against a live server', () => {
           inFlight += 1
           peakInFlight = Math.max(peakInFlight, inFlight)
           try {
-            const outcome = await discordFetch<DiscordMessageResponse>(URL, {
+            const outcome = await discordFetch<DiscordMessageResponse>(executeWebhookUrl(URL), {
               method: 'POST',
               headers: { 'content-type': input.contentType, 'content-length': String(input.contentLength) },
               body: input.body as unknown as RequestInit['body'],

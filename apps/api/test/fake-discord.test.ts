@@ -69,11 +69,12 @@ function multipart(files: { name: string; bytes: Buffer }[]): { body: Buffer; co
 
 async function upload(files: { name: string; bytes: Buffer }[]): Promise<Response> {
   const { body, contentType } = multipart(files)
-  return fetch(webhookUrl(), { method: 'POST', headers: { 'content-type': contentType }, body })
+  // DiscordDrive always executes webhooks with wait=true, as production does.
+  return fetch(`${webhookUrl()}?wait=true`, { method: 'POST', headers: { 'content-type': contentType }, body })
 }
 
 async function postJson(payload: object): Promise<Response> {
-  return fetch(webhookUrl(), {
+  return fetch(`${webhookUrl()}?wait=true`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),

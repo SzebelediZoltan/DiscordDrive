@@ -174,8 +174,8 @@ async function sendTestMessageWithAttachment(url: string, size: number): Promise
     yield tail
   }
 
-  const { discordFetch } = await import('./discord.client.js')
-  const outcome = await discordFetch<{ id: string }>(url, {
+  const { discordFetch, executeWebhookUrl } = await import('./discord.client.js')
+  const outcome = await discordFetch<{ id: string }>(executeWebhookUrl(url), {
     method: 'POST',
     headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
     // Node's undici fetch needs both a stream body typed loosely and `duplex: 'half'`;
@@ -240,6 +240,8 @@ export async function testWebhook(input: {
   )
 
   if (outcome.ok) {
+    // `wait=true` is set by the caller, so a 2xx carries the message — but stay
+    // resilient to a body-less 204 rather than crashing after the post already landed.
     await prisma.webhook.update({
       where: { id: input.webhookRowId },
       data: {
@@ -248,15 +250,15 @@ export async function testWebhook(input: {
         lastTestError: null,
         // Discord only reveals the channel on a successful post, so this is the first
         // point at which it is knowable.
-        channelId: outcome.data.channel_id ?? null,
+        channelId: outcome.data?.channel_id ?? null,
       },
     })
 
     return {
       ok: true,
       latencyMs: outcome.latencyMs,
-      channelId: outcome.data.channel_id ?? null,
-      messageId: outcome.data.id,
+      channelId: outcome.data?.channel_id ?? null,
+      messageId: outcome.data?.id ?? '',
     }
   }
 

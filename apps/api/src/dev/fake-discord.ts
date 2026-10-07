@@ -151,6 +151,11 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
 
   app.post('/api/v10/webhooks/:webhookId/:token', async (req, res) => {
     const { webhookId } = req.params
+    // Real Discord answers an execute-webhook with `204 No Content` unless the caller
+    // asks for the created message via `wait=true`. DiscordDrive always waits, but the
+    // fake refuses to fabricate a body for a request that would not have got one — that
+    // mismatch is exactly how a “message landed but the app crashed” bug escaped before.
+    const wait = req.query.wait === 'true'
 
     // Same token check as the GET route. Without it a deleted webhook still accepts uploads
     // on POST, which hides the single most common real failure — and makes "report a dead
@@ -234,7 +239,8 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
       }
 
       messages.set(messageId, { id: messageId, webhookId, channelId, attachmentIds: [], createdAt: Date.now() })
-      res.status(200).json(serializeMessage(messages.get(messageId)!))
+      if (wait) res.status(200).json(serializeMessage(messages.get(messageId)!))
+      else res.status(204).end()
       return
     }
 
@@ -310,7 +316,8 @@ export function createFakeDiscord(options: FakeDiscordOptions = {}): { app: Expr
         attachmentIds: received.map((a) => a.id),
         createdAt: Date.now(),
       })
-      res.status(200).json(serializeMessage(messages.get(messageId)!))
+      if (wait) res.status(200).json(serializeMessage(messages.get(messageId)!))
+      else res.status(204).end()
     })
 
     req.pipe(parser)
