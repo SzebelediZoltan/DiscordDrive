@@ -255,14 +255,16 @@ export function createAdminRouter(): Router {
   })
 
   router.get('/stats', async (_req: Request, res: Response): Promise<void> => {
-    const [users, waiting, usersByStatus, uploads, storedBytes, webhookCount] = await Promise.all([
-      prisma.user.count(),
-      prisma.waitlistEntry.count({ where: { status: 'WAITING' } }),
-      prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
-      prisma.fileObject.count(),
-      prisma.fileObject.aggregate({ _sum: { sizeBytes: true } }),
-      prisma.webhook.count(),
-    ])
+    const [users, waiting, usersByStatus, uploads, storedBytes, webhookCount, chunkCount] =
+      await Promise.all([
+        prisma.user.count(),
+        prisma.waitlistEntry.count({ where: { status: 'WAITING' } }),
+        prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
+        prisma.fileObject.count(),
+        prisma.fileObject.aggregate({ _sum: { sizeBytes: true } }),
+        prisma.webhook.count(),
+        prisma.chunk.count(),
+      ])
 
     const byStatus = Object.fromEntries(usersByStatus.map((s) => [s.status, s._count._all]))
 
@@ -279,6 +281,7 @@ export function createAdminRouter(): Router {
       // scale this product targets, so the value is stringified deliberately.
       storedBytes: (storedBytes._sum.sizeBytes ?? 0n).toString(),
       webhooks: webhookCount,
+      chunks: chunkCount,
     })
   })
 

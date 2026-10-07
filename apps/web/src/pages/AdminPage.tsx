@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Check, Files, HardDrive, Loader2, ShieldCheck, Users, X } from 'lucide-react'
+import { Check, Files, HardDrive, Layers, Loader2, ShieldCheck, Users, UserPlus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { formatBytes } from '@/lib/upload/queue'
 
 type Tab = 'requests' | 'usage'
+
+type AdminStats = {
+  users: number
+  waiting: number
+  usersByStatus: { PENDING: number; ACTIVE: number; SUSPENDED: number }
+  files: number
+  storedBytes: string
+  webhooks: number
+  chunks: number
+}
 
 type WaitlistEntry = {
   id: string
@@ -81,12 +91,34 @@ function StatCard({ icon, label, value }: { icon: ReactNode; label: string; valu
   )
 }
 
+/**
+ * The default-view hero: one number per thing an admin actually manages. Matches the
+ * stats endpoint one-to-one, so a count is never invented in the client — the number
+ * refreshed itself after every approve/reject.
+ */
+function HeroStat({ icon, label, value, foot }: { icon: ReactNode; label: string; value: string; foot: string }) {
+  return (
+    <div className="card-surface relative overflow-hidden p-4">
+      <div aria-hidden className="pointer-events-none absolute -right-3 -top-3 size-16 rounded-full bg-blurple/10 blur-2xl" />
+      <div className="flex items-center gap-2 text-[0.7rem] font-medium uppercase tracking-wider text-faint">
+        <span className="grid size-6 place-items-center rounded-(--radius-control) border border-line bg-surface-raised text-blurple-soft">
+          {icon}
+        </span>
+        {label}
+      </div>
+      <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-ink">{value}</p>
+      <p className="mt-0.5 text-xs text-faint">{foot}</p>
+    </div>
+  )
+}
+
 export function AdminPage() {
   const { user } = useCurrentUser()
   const [tab, setTab] = useState<Tab>('requests')
 
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null)
   const [usage, setUsage] = useState<UsageResponse | null>(null)
+  const [stats, setStats] = useState<AdminStats | null>(null)
   const [booting, setBooting] = useState<Tab | null>('requests')
   const [actingId, setActingId] = useState<string | null>(null)
 
@@ -117,8 +149,36 @@ export function AdminPage() {
     }
   }, [tab, user?.role])
 
+  async function refreshStats() {
+    try {
+      setStats(await adminApi<AdminStats>('/api/admin/stats'))
+    } catch {
+      /* keep whatever totals were last known; a failed refresh must not blank the hero */
+    }
+  }
+
+  useEffect(() => {
+    if (user?.role === 'ADMIN') void refreshStats()
+  }, [user?.role])
+
+  function optimisticallyResolve() {
+    // The count only ever goes down when the admin acts on a request, so a request in
+    // the list is a guarantee the totals were at least 1. Clamping keeps it honest if a
+    // second admin got there first.
+    setStats((prev) =>
+      prev
+        ? {
+            ...prev,
+            waiting: Math.max(0, prev.waiting - 1),
+            usersByStatus: { ...prev.usersByStatus, PENDING: Math.max(0, prev.usersByStatus.PENDING - 1) },
+          }
+        : prev,
+    )
+  }
+
   async function decide(entry: WaitlistEntry, decision: 'approve' | 'reject') {
     setActingId(entry.id)
+    optimisticallyResolve()
     try {
       await adminApi(`/api/admin/users/${entry.user.id}/${decision}`, { method: 'POST', body: '{}' })
       toast(`${entry.user.email} ${decision === 'approve' ? 'approved' : 'rejected'}`)
@@ -131,6 +191,7 @@ export function AdminPage() {
       }
     } finally {
       setActingId(null)
+      void refreshStats() // converge the optimistic totals back to the server's truth
     }
   }
 
@@ -182,8 +243,42 @@ export function AdminPage() {
       </div>
 
       {tab === 'requests' ? (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Sign-up requests</h2>
+        <section className="space-y-6">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="Accounts and storage at a glance">
+            <HeroStat
+              icon={<UserPlus className="size-3.5" aria-hidden />}
+              label="Pending"
+              value={(stats?.usersByStatus.PENDING ?? '—').toLocaleString()}
+              foot={`${(stats?.waiting ?? '—').toLocaleString()} in the queue`}
+            />
+            <HeroStat
+              icon={<Users className="size-3.5" aria-hidden />}
+              label="Active users"
+              value={(stats?.usersByStatus.ACTIVE ?? '—').toLocaleString()}
+              foot={`${(stats?.users ?? '—').toLocaleString()} total sign-ups`}
+            />
+            <HeroStat
+              icon={<HardDrive className="size-3.5" aria-hidden />}
+              label="Stored"
+              value={stats ? formatStoredBytes(stats.storedBytes) : '—'}
+              foot={`${(stats?.webhooks ?? '—').toLocaleString()} webhooks`}
+            />
+            <HeroStat
+              icon={<Files className="size-3.5" aria-hidden />}
+              label="Files"
+              value={(stats?.files ?? '—').toLocaleString()}
+              foot="tracked in the index"
+            />
+            <HeroStat
+              icon={<Layers className="size-3.5" aria-hidden />}
+              label="Chunks"
+              value={(stats?.chunks ?? '—').toLocaleString()}
+              foot="slices across webhooks"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground">Sign-up requests</h2>
           {booting === 'requests' ? (
             <div className="card-surface flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -237,6 +332,7 @@ export function AdminPage() {
               ))}
             </ul>
           )}
+          </div>
         </section>
       ) : (
         <section className="space-y-6">

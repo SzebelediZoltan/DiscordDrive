@@ -375,6 +375,7 @@ describe('admin stats', () => {
     expect(response.body.users).toBe(3) // two applicants + the admin
     expect(response.body.waiting).toBe(2)
     expect(response.body.usersByStatus).toEqual({ PENDING: 2, ACTIVE: 1, SUSPENDED: 0 })
+    expect(response.body.chunks).toBe(0)
     // BigInt must be a string or JSON.stringify throws on a large total.
     expect(typeof response.body.storedBytes).toBe('string')
     expect(response.body.storedBytes).toBe('0')
@@ -507,6 +508,7 @@ describe('admin stats', () => {
     expect(response.body.users).toBe(3) // two applicants + the admin
     expect(response.body.waiting).toBe(2)
     expect(response.body.usersByStatus).toEqual({ PENDING: 2, ACTIVE: 1, SUSPENDED: 0 })
+    expect(response.body.chunks).toBe(0)
     // BigInt must be a string or JSON.stringify throws on a large total.
     expect(typeof response.body.storedBytes).toBe('string')
     expect(response.body.storedBytes).toBe('0')
