@@ -94,7 +94,16 @@ export async function initUpload(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, sizeBytes: String(body.sizeBytes), clientId: id }),
   })
-  if (res.status === 201) return { upload: (await res.json()) as UploadInfo, clientId: id }
+  if (res.status === 201) {
+    // The API wraps the session in `{ upload }`. Reading the wrapper flat meant the queue
+    // saw `upload.fileId === undefined`, completed nothing and POSTed to
+    // `/api/files/undefined/complete` — the "file not found" every upload has always had.
+    const body = (await res.json()) as { upload?: UploadInfo } | null
+    if (!body?.upload) {
+      throw new UploadApiError('MALFORMED_INIT', 'The server did not answer with upload details', false)
+    }
+    return { upload: body.upload, clientId: id }
+  }
   throw await toError(res, 'Could not start the upload')
 }
 
