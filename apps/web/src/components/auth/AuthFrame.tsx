@@ -10,10 +10,10 @@ import { cn } from '@/lib/utils'
  * honest counter of people waiting — and the form lives on the right with breathing
  * room. On phones the panel collapses to a compact strip above the card.
  */
-export function AuthFrame({ children }: { children: ReactNode }) {
+export function AuthFrame({ children, excludeSelf = false }: { children: ReactNode; excludeSelf?: boolean }) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,42rem)_minmax(0,1fr)]">
-      <BrandPanel />
+      <BrandPanel excludeSelf={excludeSelf} />
 
       <main className="flex flex-col justify-center px-5 py-12 sm:px-10 lg:px-16">
         <div className="mx-auto w-full max-w-sm">
@@ -33,7 +33,7 @@ const FEATURES = [
   { index: '03', Icon: LockKeyhole, title: 'Yours, not ours', copy: 'No third-party blob store. The server only ever sees your Discord.' },
 ] as const
 
-function BrandPanel() {
+function BrandPanel({ excludeSelf }: { excludeSelf: boolean }) {
   return (
     <aside className="relative hidden overflow-hidden border-r border-line bg-surface/40 lg:flex lg:flex-col lg:justify-between lg:p-10">
       <div
@@ -51,7 +51,7 @@ function BrandPanel() {
           <span className="bg-linear-to-r from-blurple-soft to-violet bg-clip-text text-transparent">Discord webhook</span>.
         </h1>
 
-        <LiveWaitingCard />
+        <LiveWaitingCard excludeSelf={excludeSelf} />
 
         <ul className="space-y-5">
           {FEATURES.map(({ index, Icon, title, copy }) => (
@@ -78,9 +78,19 @@ function BrandPanel() {
 
 /**
  * The honest counter: polls the real public waitlist count and animates the digit as it
- * changes. "No fake urgency counters" — this is the server's number, verbatim.
+ * changes. "No fake urgency counters" — this is the server's number, verbatim. With
+ * `excludeSelf`, the viewer's own reservation (they are standing in the count) is taken
+ * out, so the card reports how many people are actually waiting apart from them.
  */
-export function LiveWaitingCard({ compact = false, className }: { compact?: boolean; className?: string }) {
+export function LiveWaitingCard({
+  compact = false,
+  excludeSelf = false,
+  className,
+}: {
+  compact?: boolean
+  excludeSelf?: boolean
+  className?: string
+}) {
   const [count, setCount] = useState<number | null>(null)
 
   useEffect(() => {
@@ -101,8 +111,14 @@ export function LiveWaitingCard({ compact = false, className }: { compact?: bool
     }
   }, [])
 
-  const label = count === null ? null : `${count} person${count === 1 ? '' : 's'} before you`
-  const digits = count?.toLocaleString() ?? '—'
+  const shown = count === null ? null : Math.max(0, count - (excludeSelf ? 1 : 0))
+  const label =
+    shown === null
+      ? null
+      : excludeSelf && shown === 0
+        ? 'No one else is waiting'
+        : `${shown} person${shown === 1 ? '' : 's'} waiting`
+  const digits = shown?.toLocaleString() ?? '—'
 
   if (compact) {
     return (
@@ -130,7 +146,7 @@ export function LiveWaitingCard({ compact = false, className }: { compact?: bool
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-positive opacity-60" />
             <span className="relative inline-flex size-2 rounded-full bg-positive" />
           </span>
-          {count === null ? 'Syncing…' : label}
+          {shown === null ? 'Syncing…' : label}
         </p>
         <p className="text-xs text-faint">Access is granted by an administrator.</p>
       </div>

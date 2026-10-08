@@ -1,4 +1,4 @@
-import { AuditAction, ChunkStatus, FileStatus } from '../../generated/prisma/client.js'
+import { AuditAction, ChunkStatus, FileStatus, type ShareMode } from '../../generated/prisma/client.js'
 import { recordAudit } from '../../lib/audit.js'
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../http/errors.js'
@@ -17,6 +17,7 @@ const MAX_DEPTH = 64
 
 interface FileRowBase {
   id: string
+  userId: string
   name: string
   originalName: string
   sizeBytes: bigint
@@ -26,13 +27,21 @@ interface FileRowBase {
   folderId: string | null
   folder: { name: string } | null
   chunkCount: number
+  shareMode: ShareMode
+  shareToken: string | null
+  user: { id: string; email: string; displayName: string | null }
   createdAt: Date
   updatedAt: Date
   completedAt: Date | null
   deletedAt: Date | null
 }
 
-/** One entry in a listing. `folderName` is the row's parent folder when it has one. */
+/**
+ * One entry in a listing. `folderName` is the row's parent folder when it has one.
+ * The share fields are owner-only: the owner sees their mode and token (so menu state and
+ * the copy-link action can render), while a row handed to a recipient carries `sharedBy`
+ * — the account that shared the file with them — and no token.
+ */
 export interface FileRow {
   id: string
   name: string
@@ -44,6 +53,9 @@ export interface FileRow {
   folderId: string | null
   folderName: string | null
   chunkCount: number
+  shareMode: string
+  shareToken: string | null
+  sharedBy: { id: string; email: string; displayName: string } | null
   createdAt: Date
   updatedAt: Date
   completedAt: Date | null
@@ -64,6 +76,12 @@ export interface FolderRow {
 export interface ListResult {
   folders: FolderRow[]
   files: FileRow[]
+  /**
+   * Files other accounts have shared with the user, newest first, capped at 200, and never
+   * paginated (it is a "share inbox", not a browser). Present only on the root listing for
+   * now; search already folds shared matches into `files`.
+   */
+  shared: FileRow[]
   ancestors: { id: string; name: string }[]
   /** The last file id of a page; pass it back as `cursor` to fetch the next page. */
   nextCursor: string | null
@@ -84,16 +102,27 @@ export async function listEntries(input: {
   const ancestors = await resolveAncestors(input.userId, input.folderId)
 
   if (search) {
-    // Server-side search is global — it spans every folder the user owns, so a result can
-    // never be hidden behind an unvisited folder. The match set paginates with the same
-    // keyset cursor as browse mode.
+    // Server-side search is global — it spans every folder the caller owns *and* every file
+    // shared with them, so a result can never be hidden behind an unvisited folder. The
+    // match set paginates with the same keyset cursor as browse mode.
     const files = await pagedFiles({
       where: {
-        userId: input.userId,
         status: { not: FileStatus.DELETED },
         OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { mimeType: { contains: search, mode: 'insensitive' } },
+          {
+            userId: input.userId,
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { mimeType: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+          {
+            shares: { some: { userId: input.userId } },
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { mimeType: { contains: search, mode: 'insensitive' } },
+            ],
+          },
         ],
       },
       cursor: input.cursor,
@@ -102,7 +131,8 @@ export async function listEntries(input: {
 
     return {
       folders: [],
-      files: await presentFileRows(takePage(files, limit)),
+      files: await presentFileRows(takePage(files, limit), input.userId),
+      shared: [],
       ancestors,
       nextCursor: files.length > limit ? files[limit - 1]!.id : null,
     }
@@ -110,7 +140,7 @@ export async function listEntries(input: {
 
   const currentId = ancestors[ancestors.length - 1]?.id ?? null
 
-  const [folders, files] = await Promise.all([
+  const [folders, files, sharedFiles] = await Promise.all([
     prisma.folder.findMany({
       where: { userId: input.userId, parentId: currentId },
       orderBy: { name: 'asc' },
@@ -120,6 +150,14 @@ export async function listEntries(input: {
       cursor: input.cursor,
       limit,
     }),
+    currentId === null
+      ? prisma.fileObject.findMany({
+          where: { status: { not: FileStatus.DELETED }, shares: { some: { userId: input.userId } } },
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          take: 200,
+          include: fileListInclude,
+        })
+      : Promise.resolve([]),
   ])
 
   const folderIds = folders.map((f) => f.id)
@@ -150,7 +188,8 @@ export async function listEntries(input: {
       fileCount: fileMap.get(f.id) ?? 0,
       childFolderCount: childMap.get(f.id) ?? 0,
     })),
-    files: await presentFileRows(takePage(files, limit)),
+    files: await presentFileRows(takePage(files, limit), input.userId),
+    shared: await presentFileRows(sharedFiles, input.userId),
     ancestors,
     nextCursor: files.length > limit ? files[limit - 1]!.id : null,
   }
@@ -184,7 +223,10 @@ async function resolveAncestors(userId: string, folderId?: string): Promise<{ id
   return chain
 }
 
-const fileListInclude = { folder: { select: { name: true } } } as const
+const fileListInclude = {
+  folder: { select: { name: true } },
+  user: { select: { id: true, email: true, displayName: true } },
+} as const
 
 async function pagedFiles(input: {
   where: NonNullable<Parameters<typeof prisma.fileObject.findMany>[0]>['where']
@@ -213,8 +255,11 @@ function takePage<T>(rows: T[], limit: number): T[] {
  * queries rather than N per-file metadata calls. `linkHealthy` mirrors the download path's
  * definition — every chunk re-armed and none expired — so the badge in the UI never
  * disagrees with whether a download would actually succeed.
+ *
+ * `viewerId` frames the share fields per row: the owner sees `shareMode`/`shareToken`, a
+ * grant recipient sees `sharedBy` pointing at the account that shared the file with them.
  */
-async function presentFileRows(files: FileRowBase[]): Promise<FileRow[]> {
+async function presentFileRows(files: FileRowBase[], viewerId: string): Promise<FileRow[]> {
   if (files.length === 0) return []
 
   const ids = files.map((f) => f.id)
@@ -250,6 +295,8 @@ async function presentFileRows(files: FileRowBase[]): Promise<FileRow[]> {
     const health = byFile.get(file.id)
     const expiries = health?.expiries ?? []
     const linkExpiresAt = expiries.length > 0 ? new Date(Math.min(...expiries)) : null
+    const isOwner = file.userId === viewerId
+    // For a row handed to a recipient, the someone who shared it is the file's owner.
     return {
       id: file.id,
       name: file.name,
@@ -261,6 +308,11 @@ async function presentFileRows(files: FileRowBase[]): Promise<FileRow[]> {
       folderId: file.folderId,
       folderName: file.folder?.name ?? null,
       chunkCount: file.chunkCount,
+      shareMode: file.shareMode,
+      shareToken: isOwner ? file.shareToken : null,
+      sharedBy: isOwner
+        ? null
+        : { id: file.user.id, email: file.user.email, displayName: file.user.displayName ?? '' },
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
       completedAt: file.completedAt,

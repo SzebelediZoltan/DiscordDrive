@@ -36,6 +36,19 @@ async function loadOwnedFile(userId: string, fileId: string): Promise<FileObject
   return file
 }
 
+/**
+ * Loads a file the caller is allowed to read: either they own it, or a `FileShare` grant
+ * hands them read access. Everything else is a 404 identical to "does not exist", so a
+ * recipient's file id never leaks share state to someone without a grant.
+ */
+async function loadReadableFile(userId: string, fileId: string): Promise<FileObject> {
+  const file = await prisma.fileObject.findFirst({
+    where: { id: fileId, OR: [{ userId }, { shares: { some: { userId } } }] },
+  })
+  if (!file || file.status === 'DELETED') throw AppError.notFound('File not found')
+  return file
+}
+
 interface DownloadChunk {
   id: string
   index: number
@@ -157,10 +170,10 @@ function writeWithBackpressure(res: Response, buf: Buffer): Promise<void> {
  * and quotes replaced), and `filename*` carries the real bytes percent-encoded, which is
  * the form browsers prefer for non-ASCII names.
  */
-function contentDisposition(name: string): string {
+function contentDisposition(name: string, disposition: 'attachment' | 'inline' = 'attachment'): string {
   const fallback = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
   const encoded = encodeURIComponent(name).replace(/'/g, '%27')
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +191,10 @@ export interface FileMetadata {
   folderId: string | null
   chunkSizeBytes: number
   chunkCount: number
+  /** The share mode on the row: RESTRICTED, LINK, or SPECIFIC. */
+  shareMode: string
+  /** The public-link token, exposed only on the owner's own metadata read. */
+  shareToken: string | null
   createdAt: Date
   updatedAt: Date
   completedAt: Date | null
@@ -243,6 +260,9 @@ export async function presentFileMetadata(input: {
     folderId: file.folderId,
     chunkSizeBytes: file.chunkSizeBytes,
     chunkCount: file.chunkCount,
+    shareMode: file.shareMode,
+    // Owner-only view of the metadata row, so the menu can offer copy-link directly.
+    shareToken: file.shareToken,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     completedAt: file.completedAt,
@@ -255,15 +275,22 @@ export async function presentFileMetadata(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Download
+// Streaming core: download (attachment), view (inline + Range), share link
 // ---------------------------------------------------------------------------
 
-export async function downloadFile(input: {
-  userId: string
-  fileId: string
-  res: Response
-}): Promise<void> {
-  const file = await loadOwnedFile(input.userId, input.fileId)
+export interface PreparedStream {
+  chunks: DownloadChunk[]
+  hasToken: Map<string, boolean>
+}
+
+/**
+ * The pre-flight shared by every byte route. The file must be COMPLETE with every chunk
+ * present, and every chunk whose link is already known to be expired is re-armed (or found
+ * unrecoverable) *before* the first byte is written — once headers are out there is no way
+ * to emit a clean JSON error, so a fatal answer here is still a proper JSON response
+ * instead of a truncated stream. "Re-upload required" is exactly what this refusal means.
+ */
+export async function prepareStream(file: FileObject): Promise<PreparedStream> {
   if (file.status !== 'COMPLETE') {
     throw AppError.conflict('INCOMPLETE_UPLOAD', 'This file has not finished uploading yet')
   }
@@ -276,8 +303,6 @@ export async function downloadFile(input: {
   const hasToken = await botTokenByBatch(file.id)
   const chunks = await rearmChunks(file.id, chunkRows)
 
-  // The first byte has not been written yet, so a fatal answer here is still a clean JSON
-  // error instead of a truncated download. This is what "re-upload required" means.
   const now = Date.now()
   const stillDead = chunks.filter((c) => isDeadNow(c, now))
   if (stillDead.length > 0) {
@@ -296,17 +321,105 @@ export async function downloadFile(input: {
     )
   }
 
-  input.res.status(200)
-  input.res.setHeader('Content-Type', file.mimeType || 'application/octet-stream')
-  input.res.setHeader('Content-Length', file.sizeBytes.toString())
-  input.res.setHeader('Content-Disposition', contentDisposition(file.name))
-  input.res.setHeader('Cache-Control', 'private, no-store')
-  if (file.sha256) input.res.setHeader('ETag', `"${file.sha256}"`)
-  input.res.flushHeaders()
+  return { chunks, hasToken }
+}
+
+export interface ByteRange {
+  /** First byte, inclusive. */
+  start: bigint
+  /** Last byte, inclusive. */
+  end: bigint
+}
+
+/**
+ * Parses a single `Range: bytes=` range. Returns null for an absent or malformed header —
+ * the spec lets a server ignore a bad Range and serve the whole representation. A
+ * syntactically valid but unsatisfiable range (it starts past the end of the file) throws
+ * 416 so the caller can answer with the `Content-Range` hint "bytes star-slash-N", which is
+ * what lets video clients recover gracefully instead of re-requesting from zero.
+ */
+function parseRangeHeader(header: string | undefined, sizeBytes: bigint): ByteRange | null {
+  if (header === undefined) return null
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim())
+  if (!match) return null
+
+  const rawStart = match[1] ?? ''
+  const rawEnd = match[2] ?? ''
+  // `bytes=-N`: the suffix form, "the last N bytes".
+  if (rawStart === '' && rawEnd !== '') {
+    const suffix = BigInt(rawEnd)
+    if (suffix <= 0n) throw unsatisfiableRange(sizeBytes)
+    if (suffix >= sizeBytes) return { start: 0n, end: sizeBytes - 1n }
+    return { start: sizeBytes - suffix, end: sizeBytes - 1n }
+  }
+
+  const start = BigInt(rawStart)
+  if (start >= sizeBytes) throw unsatisfiableRange(sizeBytes)
+
+  let end = rawEnd === '' ? sizeBytes - 1n : BigInt(rawEnd)
+  if (end >= sizeBytes) end = sizeBytes - 1n
+  if (end < start) throw unsatisfiableRange(sizeBytes)
+
+  return { start, end }
+}
+
+function unsatisfiableRange(sizeBytes: bigint): AppError {
+  return new AppError(416, 'RANGE_NOT_SATISFIABLE', 'The requested byte range does not exist', {
+    contentRange: `bytes */${sizeBytes.toString()}`,
+  })
+}
+
+/**
+ * Writes the requested slice of a file, streaming chunk bodies from Discord straight to the
+ * response with socket backpressure and never assembling the file in memory. A range maps
+ * onto the chunk geometry: only the chunks overlapping [start, end] are fetched at all, and
+ * each is sliced in place — the resident cost is one chunk's worth of RAM, the same budget
+ * a whole-file download pays.
+ *
+ * Range support is what makes in-app video/audio preview cheap: a `<video>` element seeking
+ * asks for a byte window, and answering it means pulling only the two chunks that contain
+ * it rather than the whole file.
+ */
+export async function writeFileStream(input: {
+  res: Response
+  file: FileObject
+  chunks: DownloadChunk[]
+  hasToken: Map<string, boolean>
+  range: ByteRange | null
+  disposition: 'attachment' | 'inline'
+}): Promise<void> {
+  const { res, file, chunks, hasToken, range, disposition } = input
+  const total = file.sizeBytes
+  const start = range?.start ?? 0n
+  const end = range?.end ?? total - 1n
+  const length = end - start + 1n
+
+  if (range !== null) {
+    res.status(206)
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${total.toString()}`)
+  } else {
+    res.status(200)
+  }
+  res.setHeader('Content-Type', file.mimeType || 'application/octet-stream')
+  res.setHeader('Content-Length', length.toString())
+  res.setHeader('Content-Disposition', contentDisposition(file.name, disposition))
+  res.setHeader('Accept-Ranges', 'bytes')
+  res.setHeader('Cache-Control', 'private, no-store')
+  if (file.sha256) res.setHeader('ETag', `"${file.sha256}"`)
+  res.flushHeaders()
+
+  const chunkSize = BigInt(file.chunkSizeBytes)
+  const firstIndex = Number(start / chunkSize)
+  const lastIndex = Number(end / chunkSize)
 
   try {
     let sent = 0n
     for (const chunk of chunks) {
+      if (chunk.index < firstIndex || chunk.index > lastIndex) continue
+      const chunkStart = BigInt(chunk.index) * chunkSize
+      const sliceStart = start > chunkStart ? start - chunkStart : 0n
+      const sliceEnd = end < chunkStart + BigInt(chunk.sizeBytes) - 1n ? end - chunkStart : BigInt(chunk.sizeBytes) - 1n
+
       const canRefresh = chunk.batchId !== null && (hasToken.get(chunk.batchId) ?? false)
       const outcome = await fetchChunkBody(chunk, canRefresh)
       if (!outcome.ok || outcome.body === null) {
@@ -314,29 +427,80 @@ export async function downloadFile(input: {
       }
 
       let read = 0n
+      let bufPos = 0n
       for await (const piece of outcome.body) {
         const buf = Buffer.isBuffer(piece) ? piece : Buffer.from(piece)
         read += BigInt(buf.byteLength)
-        await writeWithBackpressure(input.res, buf)
+        if (bufPos >= sliceEnd + 1n) {
+          bufPos += BigInt(buf.byteLength)
+          continue
+        }
+        const skipBefore = sliceStart > bufPos ? sliceStart - bufPos : 0n
+        const take = sliceEnd - bufPos + 1n
+        const from = Number(skipBefore)
+        const to = Math.min(buf.byteLength, from + Number(take))
+        if (to > from) await writeWithBackpressure(res, buf.subarray(from, to))
+        bufPos += BigInt(buf.byteLength)
       }
       if (read !== chunk.sizeBytes) {
         throw new Error(`chunk ${chunk.index} delivered ${read} of ${chunk.sizeBytes} bytes; aborting to keep Content-Length honest`)
       }
-      sent += read
+      sent += sliceEnd - sliceStart + 1n
     }
 
-    if (sent !== file.sizeBytes) {
-      throw new Error(`download delivered ${sent} of ${file.sizeBytes} bytes; aborting to keep Content-Length honest`)
+    if (sent !== length) {
+      throw new Error(`stream delivered ${sent} of ${length} bytes; aborting to keep Content-Length honest`)
     }
-    input.res.end()
+    res.end()
   } catch (err) {
     // Headers are sent, so an error response is no longer possible; the only honest move
     // is to cut the stream short, which the browser notices because Content-Length and the
     // bytes it actually received disagree. Never rethrow into the error handler, which
     // would try to write JSON onto a response that has already started.
-    logger.error({ err, fileId: file.id, userId: input.userId }, 'download aborted mid-stream')
-    if (!input.res.writableEnded) input.res.destroy(err instanceof Error ? err : new Error(String(err)))
+    logger.error({ err, fileId: file.id }, 'stream aborted mid-response')
+    if (!res.writableEnded) res.destroy(err instanceof Error ? err : new Error(String(err)))
   }
+}
+
+export async function downloadFile(input: {
+  userId: string
+  fileId: string
+  res: Response
+}): Promise<void> {
+  const file = await loadReadableFile(input.userId, input.fileId)
+  const { chunks, hasToken } = await prepareStream(file)
+  await writeFileStream({
+    res: input.res,
+    file,
+    chunks,
+    hasToken,
+    range: null,
+    disposition: 'attachment',
+  })
+}
+
+/**
+ * The inline read route backing the preview dialog. Same streaming core as download, but
+ * `inline` disposition and HTTP Range support (via `Range` from the request), so a browser
+ * can render the file in place and seek video/audio with partial byte windows.
+ */
+export async function viewFile(input: {
+  userId: string
+  fileId: string
+  rangeHeader: string | undefined
+  res: Response
+}): Promise<void> {
+  const file = await loadReadableFile(input.userId, input.fileId)
+  const { chunks, hasToken } = await prepareStream(file)
+  const range = parseRangeHeader(input.rangeHeader, file.sizeBytes)
+  await writeFileStream({
+    res: input.res,
+    file,
+    chunks,
+    hasToken,
+    range,
+    disposition: 'inline',
+  })
 }
 
 // ---------------------------------------------------------------------------

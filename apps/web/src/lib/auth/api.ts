@@ -18,12 +18,12 @@ interface ErrorBody {
   error?: { code?: string; message?: string; details?: unknown } | null
 }
 
-export async function postJson(url: string, body: unknown): Promise<Record<string, unknown>> {
+export async function requestJson<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
-    method: 'POST',
+    method,
     headers: { 'content-type': 'application/json' },
     credentials: 'same-origin',
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
 
   if (!res.ok) {
@@ -41,7 +41,12 @@ export async function postJson(url: string, body: unknown): Promise<Record<strin
     )
   }
 
-  return res.json() as Promise<Record<string, unknown>>
+  if (res.status === 204) return undefined as T
+  return res.json() as Promise<T>
+}
+
+export async function postJson(url: string, body: unknown): Promise<Record<string, unknown>> {
+  return requestJson('POST', url, body)
 }
 
 export function asApiError(error: unknown): AuthApiError {
@@ -62,6 +67,24 @@ export function waitlistStatus(email: string): Promise<WaitlistSnapshot> {
   return fetch(`/api/waitlist/status?email=${encodeURIComponent(email)}`, { credentials: 'same-origin' }).then(
     (res) => res.json() as Promise<WaitlistSnapshot>,
   )
+}
+
+export interface PublicUser {
+  id: string
+  email: string
+  displayName: string
+  role: 'ADMIN' | 'USER'
+  status: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'SUSPENDED'
+  approved: boolean
+  onboardingComplete: boolean
+}
+
+export function updateProfile(displayName: string): Promise<{ user: PublicUser }> {
+  return requestJson('PATCH', '/api/auth/profile', { displayName })
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await requestJson('POST', '/api/auth/change-password', { currentPassword, newPassword })
 }
 
 /**

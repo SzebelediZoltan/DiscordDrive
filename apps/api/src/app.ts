@@ -10,6 +10,7 @@ import { sameOriginGuard } from './http/same-origin-guard.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
 import { createFileRouter } from './modules/files/file.routes.js'
 import { createFolderRouter } from './modules/files/folder.routes.js'
+import { createShareLinkRouter, createUserSearchRouter } from './modules/files/share.routes.js'
 import { createAdminRouter, createMyWaitlistRouter, createWaitlistRouter } from './modules/waitlist/waitlist.routes.js'
 import { createWebhookRouter } from './modules/webhooks/webhook.routes.js'
 
@@ -71,6 +72,11 @@ export function createApp(): Express {
   // reading, so the parser here only serves init/complete/abort.
   app.use('/api/files', express.json({ limit: '64kb' }), createFileRouter())
   app.use('/api/folders', express.json({ limit: '16kb' }), createFolderRouter())
+
+  // Public share links stream bytes, so they deliberately skip any body parser; the user
+  // search is a small JSON-less GET behind the same auth as the rest of the dashboard.
+  app.use('/api/share', createShareLinkRouter())
+  app.use('/api/users', createUserSearchRouter())
 
   app.use(notFoundHandler)
   app.use(errorHandler)

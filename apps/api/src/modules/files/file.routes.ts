@@ -3,8 +3,10 @@ import { AppError } from '../../http/errors.js'
 import { requireAuth, requireOnboarded } from '../../http/auth-middleware.js'
 import { z } from 'zod'
 import { abortUpload, completeUpload, initUpload, receiveChunk } from './upload.service.js'
-import { downloadFile, presentFileMetadata, verifyFile } from './download.service.js'
+import { downloadFile, presentFileMetadata, verifyFile, viewFile } from './download.service.js'
 import { initUploadSchema } from './upload.schemas.js'
+import { getShareState, updateShare } from './share.service.js'
+import { updateShareSchema } from './share.schemas.js'
 import { listEntries, moveFile, renameFile, softDeleteFile } from './files.service.js'
 
 /**
@@ -115,11 +117,50 @@ export function createFileRouter(): Router {
     await downloadFile({ userId: req.user!.id, fileId: fileId.data, res })
   })
 
+  router.get('/:id/view', async (req: Request, res: Response): Promise<void> => {
+    const fileId = fileIdSchema.safeParse(req.params.id)
+    if (!fileId.success) throw AppError.notFound('File not found')
+
+    // Streams bytes with `inline` disposition and answers `Range`, so the preview dialog
+    // can render the file in place while video/audio seek with partial byte windows.
+    await viewFile({ userId: req.user!.id, fileId: fileId.data, rangeHeader: req.headers.range, res })
+  })
+
   router.get('/:id/verify', async (req: Request, res: Response): Promise<void> => {
     const fileId = fileIdSchema.safeParse(req.params.id)
     if (!fileId.success) throw AppError.notFound('File not found')
 
     res.json({ result: await verifyFile({ userId: req.user!.id, fileId: fileId.data }) })
+  })
+
+  // The share dialog: owner-only read/write of the three-mode access state. Read routes
+  // for a shared file live over the listing, download and view endpoints.
+
+  router.get('/:id/share', async (req: Request, res: Response): Promise<void> => {
+    const fileId = fileIdSchema.safeParse(req.params.id)
+    if (!fileId.success) throw AppError.notFound('File not found')
+
+    res.json({ share: await getShareState({ userId: req.user!.id, fileId: fileId.data }) })
+  })
+
+  router.patch('/:id/share', async (req: Request, res: Response): Promise<void> => {
+    const fileId = fileIdSchema.safeParse(req.params.id)
+    if (!fileId.success) throw AppError.notFound('File not found')
+
+    const parsed = updateShareSchema.safeParse(req.body)
+    if (!parsed.success) {
+      throw AppError.badRequest('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request')
+    }
+
+    res.json({
+      share: await updateShare({
+        userId: req.user!.id,
+        fileId: fileId.data,
+        mode: parsed.data.mode,
+        emails: parsed.data.emails,
+        ip: req.ip,
+      }),
+    })
   })
 
   router.patch('/:id', async (req: Request, res: Response): Promise<void> => {

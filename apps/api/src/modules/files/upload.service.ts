@@ -51,7 +51,7 @@ const MAX_PENDING_BYTES = 256 * MIB
  * of whatever is already buffered, and several concurrent 25 MiB bodies add up faster than
  * they look.
  */
-const MAX_CONCURRENT_CHUNK_BODIES = 4
+const MAX_CONCURRENT_CHUNK_BODIES = 8
 const bodySlots = new Semaphore({ limit: MAX_CONCURRENT_CHUNK_BODIES, clock: systemClock })
 
 const noop = (): void => {}

@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CheckCircle2,
@@ -6,6 +7,7 @@ import {
   ChevronUp,
   CircleSlash,
   Clock3,
+  FileSearch,
   Loader2,
   Minus,
   Pause,
@@ -51,7 +53,15 @@ function useSpeed(task: UploadTask): number {
   return speed
 }
 
-function UploadRow({ task, queue }: { task: UploadTask; queue: UploadQueue }) {
+function UploadRow({
+  task,
+  queue,
+  onPickFile,
+}: {
+  task: UploadTask
+  queue: UploadQueue
+  onPickFile: (taskId: string) => void
+}) {
   const speed = useSpeed(task)
   const active = isTaskActive(task)
   const uploading = task.status === 'uploading'
@@ -79,7 +89,7 @@ function UploadRow({ task, queue }: { task: UploadTask; queue: UploadQueue }) {
                 </>
               )}
               {uploading && speed > 0 && <span>{formatBytes(speed)}/s</span>}
-              {paused && 'Paused'}
+              {paused && (task.fileMissing ? 'Paused — no file to continue, pick it below' : 'Paused')}
               {failed && <span className="text-critical">{task.error}</span>}
             </span>
           </p>
@@ -94,6 +104,11 @@ function UploadRow({ task, queue }: { task: UploadTask; queue: UploadQueue }) {
           {paused && !task.fileMissing && (
             <Button size="sm" variant="ghost" aria-label={`Resume ${task.fileName}`} onClick={() => queue.resume(task.id)}>
               <Play className="size-3.5" aria-hidden />
+            </Button>
+          )}
+          {paused && task.fileMissing && (
+            <Button size="sm" variant="ghost" aria-label={`Choose ${task.fileName} to continue`} onClick={() => onPickFile(task.id)}>
+              <FileSearch className="size-3.5" aria-hidden />
             </Button>
           )}
           {failed && task.retriable && (
@@ -151,12 +166,32 @@ export function UploadOverlay() {
   const { queue, tasks } = useUploadQueue()
   const [collapsed, setCollapsed] = useReducer((v: boolean) => !v, false)
   const [hidden, setHidden] = useState(false)
+  const [pickFor, setPickFor] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const visible = tasks.length > 0
   const activeCount = tasks.filter(isTaskActive).length
   const failedCount = tasks.filter((t) => t.status === 'failed').length
   const doneCount = tasks.filter((t) => t.status === 'completed').length
   const allFinished = activeCount === 0 && tasks.length > 0
+
+  // A pause after a refresh lost the File handle, so this hidden picker is the overlay's
+  // "continue" path: re-select the same file and `attachFile` resumes only the chunks the
+  // server is still missing.
+  function handlePick(taskId: string) {
+    setPickFor(taskId)
+    fileInput.current?.click()
+  }
+
+  function handlePickChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (file) {
+      if (pickFor) queue.attachFile(pickFor, file)
+      else queue.enqueue([file])
+    }
+    setPickFor(null)
+    event.target.value = ''
+  }
 
   // The panel must never trap the user: Escape and a backdrop click tuck it away
   // and a pill restores it, so navigation and the login screen stay reachable
@@ -171,7 +206,16 @@ export function UploadOverlay() {
   }, [visible, hidden])
 
   return (
-    <AnimatePresence>
+    <>
+      <input
+        ref={fileInput}
+        type="file"
+        tabIndex={-1}
+        aria-label="Choose the file to continue uploading"
+        className="hidden"
+        onChange={handlePickChange}
+      />
+      <AnimatePresence>
       {visible && hidden && (
         <motion.button
           key="upload-pill"
@@ -261,7 +305,7 @@ export function UploadOverlay() {
             {!collapsed && (
               <ul className="max-h-[60vh] space-y-5 overflow-y-auto p-5">
                 {tasks.map((task) => (
-                  <UploadRow key={task.id} task={task} queue={queue} />
+                  <UploadRow key={task.id} task={task} queue={queue} onPickFile={handlePick} />
                 ))}
               </ul>
             )}
@@ -269,5 +313,6 @@ export function UploadOverlay() {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   )
 }

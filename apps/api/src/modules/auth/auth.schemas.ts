@@ -43,6 +43,13 @@ export const changePasswordSchema = z
   })
   .strict()
 
+export const updateProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(1, 'Display name is required').max(64, 'Display name is too long'),
+  })
+  .strict()
+
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>

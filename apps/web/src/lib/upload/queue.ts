@@ -14,12 +14,12 @@ import {
 
 /**
  * Chunks sail raw over HTTP, so the browser holds one ArrayBuffer per in-flight
- * chunk. The budget keeps that flat for a multi-gigabyte file: at most three 8 MiB
- * buffers per file and six across the whole queue, and a chunk is never read into
+ * chunk. The budget keeps that flat for a multi-gigabyte file: at most four 8 MiB
+ * buffers per file and ten across the whole queue, and a chunk is never read into
  * memory until the moment it is sent.
  */
-const PER_FILE_CHUNKS = 3
-const GLOBAL_CHUNK_SLOTS = 6
+const PER_FILE_CHUNKS = 4
+const GLOBAL_CHUNK_SLOTS = 10
 
 /** A lost chunk is re-sent automatically with exponential backoff, capped. */
 const MAX_CHUNK_ATTEMPTS = 4

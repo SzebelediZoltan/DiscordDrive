@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router'
+import { Navigate, useSearchParams } from 'react-router'
 import { Loader2 } from 'lucide-react'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { OnboardingPage } from '@/pages/OnboardingPage'
@@ -7,10 +7,13 @@ import { OnboardingPage } from '@/pages/OnboardingPage'
  * Gate for the /onboarding route, which lives outside the app shell on purpose: the
  * wizard is a full-screen experience with no sidebar chrome. Admins never enter the
  * wizard (they predate onboarding), and anyone who already finished it is bounced back
- * to the dashboard — a completed wizard must not be replays.
+ * to the dashboard — a completed wizard must not be replays. `?again=1` opts into a
+ * replay (the Settings "Redo the setup guide" link), bypassing the completion redirect.
  */
 export function OnboardingGate() {
   const { user, loading } = useCurrentUser()
+  const [searchParams] = useSearchParams()
+  const replay = searchParams.get('again') === '1'
 
   if (loading) {
     return (
@@ -21,6 +24,6 @@ export function OnboardingGate() {
   }
 
   if (!user) return <Navigate to="/login" replace />
-  if (user.role === 'ADMIN' || user.onboardingComplete) return <Navigate to="/dashboard" replace />
+  if (!replay && (user.role === 'ADMIN' || user.onboardingComplete)) return <Navigate to="/dashboard" replace />
   return <OnboardingPage user={user} />
 }

@@ -97,6 +97,14 @@ async function list(agent: ReturnType<typeof request.agent>, query: Record<strin
       botRefreshEnabled: boolean
       linkExpiresAt: string | null
     }[]
+    shared: {
+      id: string
+      name: string
+      mimeType: string
+      status: string
+      sharedBy: { id: string; email: string; displayName: string } | null
+      linkHealthy: boolean
+    }[]
     ancestors: { id: string; name: string }[]
     nextCursor: string | null
   }
@@ -140,7 +148,7 @@ describe('file manager — list, search, pagination', () => {
 
   it('starts empty at the root', async () => {
     const root = await list(user)
-    expect(root).toEqual({ folders: [], files: [], ancestors: [], nextCursor: null })
+    expect(root).toEqual({ folders: [], files: [], shared: [], ancestors: [], nextCursor: null })
   })
 
   it('lists a completed file at the root with live link health', async () => {

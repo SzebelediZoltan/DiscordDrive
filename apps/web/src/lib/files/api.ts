@@ -17,6 +17,9 @@ export interface FileRow {
   folderId: string | null
   folderName: string | null
   chunkCount: number
+  shareMode: string
+  shareToken: string | null
+  sharedBy: { id: string; email: string; displayName: string } | null
   createdAt: string
   updatedAt: string
   completedAt: string | null
@@ -37,8 +40,24 @@ export interface FolderRow {
 export interface Listing {
   folders: FolderRow[]
   files: FileRow[]
+  /** Files other accounts shared with the caller (root browse only). */
+  shared: FileRow[]
   ancestors: { id: string; name: string }[]
   nextCursor: string | null
+}
+
+export type ShareMode = 'RESTRICTED' | 'LINK' | 'SPECIFIC'
+
+export interface ShareGrantee {
+  id: string
+  email: string
+  displayName: string
+}
+
+export interface FileShareState {
+  mode: ShareMode
+  token: string | null
+  grantees: ShareGrantee[]
 }
 
 export interface VerifyChunkResult {
@@ -159,4 +178,34 @@ export function verifyFile(fileId: string): Promise<{ result: VerifyResult }> {
 /** The same-origin streaming download URL; safe to hand to an anchor or the clipboard. */
 export function downloadUrl(fileId: string): string {
   return `/api/files/${encodeURIComponent(fileId)}/download`
+}
+
+/** The inline, byte-range-capable read behind the preview dialog. */
+export function viewUrl(fileId: string): string {
+  return `/api/files/${encodeURIComponent(fileId)}/view`
+}
+
+/** The public share-link URL. Anonymous holders of the link can download, not preview. */
+export function shareLinkUrl(token: string): string {
+  return `/api/share/${encodeURIComponent(token)}`
+}
+
+export function getShareState(fileId: string): Promise<{ share: FileShareState }> {
+  return apiFetch<{ share: FileShareState }>(`/api/files/${encodeURIComponent(fileId)}/share`)
+}
+
+export function setShareState(
+  fileId: string,
+  mode: ShareMode,
+  emails: string[],
+): Promise<{ share: FileShareState }> {
+  return apiFetch<{ share: FileShareState }>(`/api/files/${encodeURIComponent(fileId)}/share`, {
+    method: 'PATCH',
+    body: JSON.stringify({ mode, emails }),
+  })
+}
+
+export function searchUsers(q: string): Promise<{ users: ShareGrantee[] }> {
+  const query = new URLSearchParams({ q })
+  return apiFetch<{ users: ShareGrantee[] }>(`/api/users/search?${query.toString()}`)
 }

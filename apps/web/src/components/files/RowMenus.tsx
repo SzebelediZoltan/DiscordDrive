@@ -2,9 +2,11 @@ import { useState } from 'react'
 import {
   ClipboardCopy,
   Download,
+  Eye,
   FolderInput,
   MoreHorizontal,
   Pencil,
+  Share2,
   ShieldCheck,
   Trash2,
 } from 'lucide-react'
@@ -19,11 +21,13 @@ import {
 
 export interface RowActions {
   onDownload?: () => void
+  onPreview?: () => void
   onVerify?: () => void
   onCopyLink?: () => void
-  onRename: () => void
+  onShare?: () => void
+  onRename?: () => void
   onMove?: () => void
-  onDelete: () => void
+  onDelete?: () => void
 }
 
 const itemClass =
@@ -52,10 +56,21 @@ export function FolderRowMenu({ actions }: { actions: FolderActions }) {
   )
 }
 
-/** The ``…`` menu on a file row: download, verify, copy a link, rename, move, delete. */
+/**
+ * The ``…`` menu on a file row. Owner rows get the full surface (preview, download, verify,
+ * share/copy-link, move, rename, delete); a row handed to a recipient only ever carries
+ * preview and download, so those actions are always optional here.
+ */
 export function FileRowMenu({ actions }: { actions: RowActions }) {
+  const hasOwnerItems = actions.onShare || actions.onCopyLink || actions.onMove || actions.onRename || actions.onDelete
   return (
     <RowMenuShell label="File actions">
+      {actions.onPreview && (
+        <DropdownMenuItem className={itemClass} onSelect={actions.onPreview}>
+          <Eye aria-hidden />
+          Preview
+        </DropdownMenuItem>
+      )}
       {actions.onDownload && (
         <DropdownMenuItem className={itemClass} onSelect={actions.onDownload}>
           <Download aria-hidden />
@@ -68,25 +83,37 @@ export function FileRowMenu({ actions }: { actions: RowActions }) {
           Verify integrity
         </DropdownMenuItem>
       )}
+      {actions.onShare && (
+        <DropdownMenuItem className={itemClass} onSelect={actions.onShare}>
+          <Share2 aria-hidden />
+          Share…
+        </DropdownMenuItem>
+      )}
       {actions.onCopyLink && (
         <DropdownMenuItem className={itemClass} onSelect={actions.onCopyLink}>
           <ClipboardCopy aria-hidden />
-          Copy link
+          {actions.onShare ? 'Copy link' : 'Get a download link'}
         </DropdownMenuItem>
       )}
-      <DropdownMenuItem className={itemClass} onSelect={actions.onMove}>
-        <FolderInput aria-hidden />
-        Move to…
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem className={itemClass} onSelect={actions.onRename}>
-        <Pencil aria-hidden />
-        Rename
-      </DropdownMenuItem>
-      <DropdownMenuItem className={destructiveClass} onSelect={actions.onDelete}>
-        <Trash2 aria-hidden />
-        Delete
-      </DropdownMenuItem>
+      {actions.onMove && (
+        <DropdownMenuItem className={itemClass} onSelect={actions.onMove}>
+          <FolderInput aria-hidden />
+          Move to…
+        </DropdownMenuItem>
+      )}
+      {(actions.onRename || actions.onDelete) && hasOwnerItems && <DropdownMenuSeparator />}
+      {actions.onRename && (
+        <DropdownMenuItem className={itemClass} onSelect={actions.onRename}>
+          <Pencil aria-hidden />
+          Rename
+        </DropdownMenuItem>
+      )}
+      {actions.onDelete && (
+        <DropdownMenuItem className={destructiveClass} onSelect={actions.onDelete}>
+          <Trash2 aria-hidden />
+          Delete
+        </DropdownMenuItem>
+      )}
     </RowMenuShell>
   )
 }

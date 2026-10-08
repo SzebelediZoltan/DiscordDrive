@@ -62,7 +62,7 @@ export function WaitlistPage() {
   }
 
   return (
-    <AuthFrame>
+    <AuthFrame excludeSelf>
       <div className="space-y-6">
         <div className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Your spot is saved</h1>
@@ -113,6 +113,10 @@ function QueueTicket({
   email: string
   onRefresh: () => void
 }) {
+  // The count the server assigns includes the viewer's own reservation, so the ticket
+  // reports how many others are actually ahead: total minus the seat you are standing in.
+  const othersWaiting = Math.max(0, waitingCount - 1)
+
   return (
     <div className="relative">
       {/* Perforation notches: the canvas circles that make the card read as a ticket stub. */}
@@ -136,8 +140,8 @@ function QueueTicket({
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-caution opacity-70" />
               <span className="relative inline-flex size-2 rounded-full bg-caution" />
             </span>
-            {waitingCount > 0
-              ? `${waitingCount} person${waitingCount === 1 ? '' : 's'} waiting with you`
+            {othersWaiting > 0
+              ? `${othersWaiting} person${othersWaiting === 1 ? '' : 's'} waiting`
               : 'You are next in line'}
           </div>
         </div>

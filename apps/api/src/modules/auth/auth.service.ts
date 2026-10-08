@@ -95,6 +95,26 @@ export async function changePassword(
   })
 }
 
+export async function updateDisplayName(userId: string, displayName: string): Promise<AuthenticatedUser> {
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user) throw AppError.unauthorized()
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { displayName },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      role: true,
+      status: true,
+      approvedAt: true,
+      onboardedAt: true,
+    },
+  })
+  return toAuthenticatedUser(updated)
+}
+
 export async function getUser(userId: string): Promise<AuthenticatedUser> {
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw AppError.unauthorized()

@@ -8,10 +8,18 @@ import {
   changePasswordSchema,
   loginSchema,
   registerSchema,
+  updateProfileSchema,
   type LoginInput,
   type RegisterInput,
 } from './auth.schemas.js'
-import { changePassword, completeOnboarding, login, publicUser, register } from './auth.service.js'
+import {
+  changePassword,
+  completeOnboarding,
+  login,
+  publicUser,
+  register,
+  updateDisplayName,
+} from './auth.service.js'
 import { checkAuthRateLimit, recordAuthFailure, recordAuthSuccess } from './rate-limit.js'
 
 /**
@@ -155,6 +163,14 @@ export function createAuthRouter(): Router {
 
     await changePassword(req.user!.id, parsed.data.currentPassword, parsed.data.newPassword)
     res.status(204).end()
+  })
+
+  router.patch('/profile', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const parsed = updateProfileSchema.safeParse(req.body)
+    if (!parsed.success) throw AppError.badRequest('VALIDATION_ERROR', firstIssue(parsed.error))
+
+    const user = await updateDisplayName(req.user!.id, parsed.data.displayName)
+    res.json({ user: publicUser(user) })
   })
 
   return router

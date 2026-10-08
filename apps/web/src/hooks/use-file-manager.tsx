@@ -27,7 +27,10 @@ import {
 
 const PAGE_SIZE = 50
 
-const EMPTY_LISTING: Listing = { folders: [], files: [], ancestors: [], nextCursor: null }
+/** Where the grid/list pick is remembered so a reload opens the drive the same way. */
+const VIEW_STORAGE_KEY = 'ddrive:file-view:v1'
+
+const EMPTY_LISTING: Listing = { folders: [], files: [], shared: [], ancestors: [], nextCursor: null }
 
 function toastError(error: unknown, fallback: string): void {
   const message = error instanceof FilesApiError ? error.message : error instanceof Error ? error.message : fallback
@@ -59,7 +62,21 @@ export function useFileManager(): FileManager {
   const [searchParams, setSearchParams] = useSearchParams()
   const folderId = searchParams.get('folder') === 'root' ? null : searchParams.get('folder')
 
-  const [view, setView] = useState<'grid' | 'list'>('grid')
+  const [view, setView] = useState<'grid' | 'list'>(() => {
+    try {
+      return localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid'
+    } catch {
+      return 'grid'
+    }
+  })
+  const setViewPersisted = useCallback((next: 'grid' | 'list') => {
+    setView(next)
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next)
+    } catch {
+      /* storage can be unavailable (private mode); the pick just lives for the tab */
+    }
+  }, [])
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -130,6 +147,8 @@ export function useFileManager(): FileManager {
       setListing((current) => ({
         folders: current.folders,
         files: [...current.files, ...next.files],
+        // The shared inbox only ever arrives once, on the browse page; later pages keep it.
+        shared: next.shared.length > 0 ? next.shared : current.shared,
         ancestors: current.ancestors,
         nextCursor: next.nextCursor,
       }))
@@ -238,7 +257,7 @@ export function useFileManager(): FileManager {
     search,
     setSearch,
     view,
-    setView,
+    setView: setViewPersisted,
     openFolder,
     createFolder: create,
     renameFolder,

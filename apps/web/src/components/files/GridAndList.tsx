@@ -19,6 +19,8 @@ import { FileRowMenu, FolderRowMenu, type RowActions } from './RowMenus'
 
 export interface ExplorerActions {
   openFolder: (folderId: string) => void
+  /** Clicking a file row/card opens its preview dialog, like any file manager. */
+  openFilePreview: (file: FileRow) => void
   folderMenu: (folder: FolderRow) => { rename: () => void; delete: () => void }
   fileMenu: (file: FileRow) => RowActions
   /** Drop of local files onto a folder row; `folderId` null means the page dropzone. */
@@ -27,9 +29,20 @@ export interface ExplorerActions {
 
 /**
  * File grid. Folders are drop targets that light up while a file drag passes over them;
- * the highlight is the visible promise that a drop lands in that folder.
+ * the highlight is the visible promise that a drop lands in that folder. Files shared with
+ * the caller render in their own "Shared with me" section (root browse only).
  */
-export function FileGrid({ folders, files, actions }: { folders: FolderRow[]; files: FileRow[]; actions: ExplorerActions }) {
+export function FileGrid({
+  folders,
+  files,
+  shared,
+  actions,
+}: {
+  folders: FolderRow[]
+  files: FileRow[]
+  shared: FileRow[]
+  actions: ExplorerActions
+}) {
   return (
     <div className="space-y-6">
       {folders.length > 0 && (
@@ -46,15 +59,36 @@ export function FileGrid({ folders, files, actions }: { folders: FolderRow[]; fi
           ))}
         </section>
       )}
+      {shared.length > 0 && (
+        <section aria-label="Files shared with me">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Shared with me</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {shared.map((file) => (
+              <FileCard key={file.id} file={file} shared actions={actions} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
 
 /**
- * File list: the same rows as the grid in a dense table, folders first. The data source is
- * identical, so the two views can never disagree.
+ * File list: the same rows as the grid in a dense table, folders first, then a "Shared with
+ * me" section when the backend returned one. The data source is identical, so the two views
+ * can never disagree.
  */
-export function FileList({ folders, files, actions }: { folders: FolderRow[]; files: FileRow[]; actions: ExplorerActions }) {
+export function FileList({
+  folders,
+  files,
+  shared,
+  actions,
+}: {
+  folders: FolderRow[]
+  files: FileRow[]
+  shared: FileRow[]
+  actions: ExplorerActions
+}) {
   return (
     <Table>
       <TableHeader>
@@ -99,38 +133,58 @@ export function FileList({ folders, files, actions }: { folders: FolderRow[]; fi
             </TableCell>
           </TableRow>
         ))}
-        {files.map((file) => {
-          const kind = fileKind(file.mimeType)
-          return (
-            <TableRow key={file.id} className="border-line hover:bg-muted/30">
-              <TableCell className="py-2">
-                <span className="flex items-center gap-2.5">
-                  <kind.Icon className={cn('size-4 shrink-0', kind.tint)} aria-hidden />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-ink">{file.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {file.folderName ?? file.mimeType}
-                    </span>
-                  </span>
-                </span>
-              </TableCell>
-              <TableCell className="hidden py-2 text-sm text-muted-foreground sm:table-cell">
-                {formatBytes(Number(BigInt(file.sizeBytes)))}
-              </TableCell>
-              <TableCell className="hidden py-2 md:table-cell">
-                <LinkHealthBadge file={file} />
-              </TableCell>
-              <TableCell className="hidden py-2 text-xs text-muted-foreground lg:table-cell">
-                {shortDate(file.updatedAt)}
-              </TableCell>
-              <TableCell className="py-2">
-                <FileRowMenu actions={actions.fileMenu(file)} />
+        {files.map((file) => (
+          <FileListRow key={file.id} file={file} actions={actions} />
+        ))}
+        {shared.length > 0 && (
+          <>
+            <TableRow className="border-line bg-muted/40">
+              <TableCell colSpan={5} className="py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Shared with me
               </TableCell>
             </TableRow>
-          )
-        })}
+            {shared.map((file) => (
+              <FileListRow key={file.id} file={file} shared actions={actions} />
+            ))}
+          </>
+        )}
       </TableBody>
     </Table>
+  )
+}
+
+function FileListRow({ file, shared, actions }: { file: FileRow; shared?: boolean; actions: ExplorerActions }) {
+  const kind = fileKind(file.mimeType)
+  const sender = shared ? (file.sharedBy?.displayName || file.sharedBy?.email) ?? '' : null
+  return (
+    <TableRow
+      className="cursor-pointer border-line hover:bg-muted/40"
+      onClick={() => actions.openFilePreview(file)}
+    >
+      <TableCell className="py-2">
+        <span className="flex items-center gap-2.5">
+          <kind.Icon className={cn('size-4 shrink-0', kind.tint)} aria-hidden />
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-ink">{file.name}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {shared ? `Shared with me · from ${sender}` : (file.folderName ?? file.mimeType)}
+            </span>
+          </span>
+        </span>
+      </TableCell>
+      <TableCell className="hidden py-2 text-sm text-muted-foreground sm:table-cell">
+        {formatBytes(Number(BigInt(file.sizeBytes)))}
+      </TableCell>
+      <TableCell className="hidden py-2 md:table-cell">
+        <LinkHealthBadge file={file} />
+      </TableCell>
+      <TableCell className="hidden py-2 text-xs text-muted-foreground lg:table-cell">
+        {shortDate(file.updatedAt)}
+      </TableCell>
+      <TableCell className="py-2">
+        <FileRowMenu actions={actions.fileMenu(file)} />
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -138,7 +192,7 @@ function FolderCard({ folder, actions }: { folder: FolderRow; actions: ExplorerA
   const drop = useFolderDrop((files) => actions.onDropFiles(files, folder.id))
 
   return (
-    <Card className={cn('relative p-4', drop.showHighlight && 'ring-2 ring-blurple')} {...drop.handlers}>
+    <Card className={cn('relative p-4 transition hover:bg-muted/40', drop.showHighlight && 'ring-2 ring-blurple')} {...drop.handlers}>
       <button
         type="button"
         onClick={() => actions.openFolder(folder.id)}
@@ -167,24 +221,37 @@ function FolderCard({ folder, actions }: { folder: FolderRow; actions: ExplorerA
   )
 }
 
-function FileCard({ file, actions }: { file: FileRow; actions: ExplorerActions }) {
+function FileCard({ file, actions, shared }: { file: FileRow; actions: ExplorerActions; shared?: boolean }) {
   const kind = fileKind(file.mimeType)
+  const sender = shared ? (file.sharedBy?.displayName || file.sharedBy?.email) ?? '' : null
   return (
-    <Card className="p-4">
-      <CardContent className="p-0">
-        <div className="flex items-start justify-between gap-2">
+    <Card className="relative p-4 transition hover:bg-muted/40">
+      <button
+        type="button"
+        onClick={() => actions.openFilePreview(file)}
+        aria-label={`Preview ${file.name}`}
+        className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      />
+      <CardContent className="pointer-events-none relative z-[1] p-0">
+        <div className="pointer-events-none flex items-start justify-between gap-2">
           <span className={cn('flex size-10 items-center justify-center rounded-lg bg-muted/60', kind.tint)}>
             <kind.Icon className="size-5" aria-hidden />
           </span>
-          <FileRowMenu actions={actions.fileMenu(file)} />
+          <span className="pointer-events-auto">
+            <FileRowMenu actions={actions.fileMenu(file)} />
+          </span>
         </div>
-        <div className="mt-3 space-y-1.5">
+        <div className="pointer-events-none mt-3 space-y-1.5">
           <p className="truncate font-medium text-ink" title={file.name}>
             {file.name}
           </p>
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{formatBytes(Number(BigInt(file.sizeBytes)))}</span>
-            {file.folderName && <span className="truncate">in {file.folderName}</span>}
+            {shared ? (
+              <span className="truncate">from {sender}</span>
+            ) : (
+              file.folderName && <span className="truncate">in {file.folderName}</span>
+            )}
           </p>
           <LinkHealthBadge file={file} />
         </div>

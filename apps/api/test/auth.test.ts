@@ -318,6 +318,42 @@ describe('POST /api/auth/change-password', () => {
   })
 })
 
+describe('PATCH /api/auth/profile', () => {
+  it('updates the display name and reflects it on the returned and stored user', async () => {
+    await createUser({ email: 'rename@example.com', displayName: 'Old Name' })
+    const agent = request.agent(app)
+    await agent.post('/api/auth/login').send({ email: 'rename@example.com', password: 'Passw0rd123' })
+
+    const response = await agent.patch('/api/auth/profile').send({ displayName: '  New Name  ' })
+    expect(response.status).toBe(200)
+    expect(response.body.user.displayName).toBe('New Name')
+
+    const row = await prisma.user.findUnique({ where: { email: 'rename@example.com' } })
+    expect(row?.displayName).toBe('New Name')
+
+    const me = await agent.get('/api/auth/me')
+    expect(me.body.user.displayName).toBe('New Name')
+  })
+
+  it('rejects an empty or over-long display name', async () => {
+    await createUser({ email: 'judge@example.com' })
+    const agent = request.agent(app)
+    await agent.post('/api/auth/login').send({ email: 'judge@example.com', password: 'Passw0rd123' })
+
+    const blank = await agent.patch('/api/auth/profile').send({ displayName: '   ' })
+    expect(blank.status).toBe(400)
+    expect(blank.body.error.code).toBe('VALIDATION_ERROR')
+
+    const long = await agent.patch('/api/auth/profile').send({ displayName: 'x'.repeat(65) })
+    expect(long.status).toBe(400)
+  })
+
+  it('401s when not signed in', async () => {
+    const response = await request(app).patch('/api/auth/profile').send({ displayName: 'Nope' })
+    expect(response.status).toBe(401)
+  })
+})
+
 describe('POST /api/auth/onboarding-complete', () => {
   it('marks an unonboarded user complete and returns the updated session user', async () => {
     await createUser({ email: 'wizard@example.com', onboardedAt: null })

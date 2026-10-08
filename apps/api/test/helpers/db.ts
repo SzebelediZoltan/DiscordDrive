@@ -11,6 +11,7 @@ const TABLES = [
   'chunks',
   'chunk_batches',
   'upload_sessions',
+  'file_shares',
   'files',
   'folders',
   'webhooks',

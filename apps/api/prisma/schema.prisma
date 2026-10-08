@@ -68,6 +68,7 @@ model User {
   files         FileObject[]
   uploadSessions UploadSession[]
   auditLogs     AuditLog[]
+  sharedFiles   FileShare[]
 
   @@index([status])
   @@map("users")
@@ -204,6 +205,14 @@ model FileObject {
   /// When a bot token is configured and the last proactive refresh succeeded.
   linkHealthyAt DateTime?
 
+  /// How the file is shared. RESTRICTED is private to the owner; LINK minted a public
+  /// token; SPECIFIC granted access to a set of users (see `shares`).
+  shareMode ShareMode @default(RESTRICTED)
+  /// Unguessable capability for LINK mode. Null unless a public link exists, and cleared
+  /// the moment the file returns to RESTRICTED or SPECIFIC so a dead link cannot keep
+  /// streaming.
+  shareToken String? @unique
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -211,12 +220,39 @@ model FileObject {
 
   chunks Chunk[]
   session UploadSession?
+  shares FileShare[]
 
   @@unique([userId, folderId, name])
   @@index([userId, folderId, status])
   @@index([userId, status])
   @@index([deletedAt])
   @@map("files")
+}
+
+enum ShareMode {
+  /// Only the owner can read the file.
+  RESTRICTED
+  /// Anyone holding the unguessable `shareToken` can download it.
+  LINK
+  /// Exactly the users in `FileShare` can view and download it.
+  SPECIFIC
+}
+
+/// One row grants one user read access to one file. File IDs and user IDs are necessarily
+/// caller-supplied, and both leave the public surface, so neither is ever validated as a
+/// capability — only the LINK token is.
+model FileShare {
+  id     String     @id @default(cuid())
+  fileId String
+  file   FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  userId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([fileId, userId])
+  @@index([userId])
+  @@map("file_shares")
 }
 
 /// One Discord message carries up to CHUNKS_PER_MESSAGE attachments. Modelling the
@@ -346,6 +382,7 @@ enum AuditAction {
   FILE_VERIFIED
   LINK_REFRESHED
   LINK_EXPIRED
+  FILE_SHARE_CHANGED
 }
 
 model AuditLog {

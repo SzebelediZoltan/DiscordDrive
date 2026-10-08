@@ -64,6 +64,7 @@ export function createWebhook(input: {
   name: string
   url: string
   botToken?: string
+  isDefault?: boolean
 }): Promise<{ webhook: OnboardingWebhook }> {
   return jsonRequest('/api/webhooks', {
     method: 'POST',
@@ -71,7 +72,7 @@ export function createWebhook(input: {
     body: JSON.stringify({
       name: input.name.trim(),
       url: input.url.trim(),
-      isDefault: true,
+      isDefault: input.isDefault ?? true,
       ...(input.botToken?.trim() ? { botToken: input.botToken.trim() } : {}),
     }),
   })
@@ -79,7 +80,7 @@ export function createWebhook(input: {
 
 export function updateWebhook(
   id: string,
-  patch: { name?: string; url?: string; botToken?: string },
+  patch: { name?: string; url?: string; botToken?: string; isDefault?: boolean },
 ): Promise<{ webhook: OnboardingWebhook }> {
   return jsonRequest(`/api/webhooks/${id}`, {
     method: 'PATCH',
@@ -90,6 +91,10 @@ export function updateWebhook(
 
 export function listWebhooks(): Promise<{ webhooks: OnboardingWebhook[] }> {
   return jsonRequest('/api/webhooks', { method: 'GET' })
+}
+
+export function deleteWebhook(id: string): Promise<void> {
+  return jsonRequest(`/api/webhooks/${id}`, { method: 'DELETE' })
 }
 
 export function testWebhook(id: string): Promise<TestResult> {

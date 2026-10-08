@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { verifyFile, downloadUrl, type FileRow, type FolderRow } from '@/lib/files/api'
+import {
+  downloadUrl,
+  shareLinkUrl,
+  verifyFile,
+  type FileRow,
+  type FolderRow,
+} from '@/lib/files/api'
 import { useFileManager } from '@/hooks/use-file-manager'
 import { useUploadQueue } from '@/hooks/use-upload-queue'
 import { toast } from 'sonner'
@@ -13,6 +19,8 @@ import { FilesToolbar } from './FilesToolbar'
 import { FileGrid, FileList, type ExplorerActions } from './GridAndList'
 import { FolderNameDialog } from './FolderNameDialog'
 import { MoveDialog } from './MoveDialog'
+import { PreviewDialog } from './PreviewDialog'
+import { ShareDialog } from './ShareDialog'
 
 interface DialogTarget {
   file: FileRow | null
@@ -32,9 +40,33 @@ export function FileExplorer() {
   const [renameTarget, setRenameTarget] = useState<DialogTarget & { mode: 'rename-folder' | 'rename-file' } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DialogTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<FileRow | null>(null)
+  const [shareTarget, setShareTarget] = useState<FileRow | null>(null)
+  const [previewTarget, setPreviewTarget] = useState<FileRow | null>(null)
 
-  const loading = fm.loading && fm.listing.files.length === 0 && fm.listing.folders.length === 0
-  const empty = !loading && fm.listing.folders.length === 0 && fm.listing.files.length === 0
+  const startDownload = (file: FileRow) => {
+    const anchor = document.createElement('a')
+    anchor.href = downloadUrl(file.id)
+    anchor.download = file.name
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+  const copyLink = async (file: FileRow) => {
+    try {
+      // A live public share link beats the owner-only download URL for anything shared.
+      const href = file.shareToken ? shareLinkUrl(file.shareToken) : downloadUrl(file.id)
+      await navigator.clipboard.writeText(`${window.location.origin}${href}`)
+      toast.success(file.shareToken ? 'Share link copied' : 'Private link copied')
+    } catch {
+      toast.error('Could not copy the link')
+    }
+  }
+
+  const hasNothing =
+    fm.listing.folders.length === 0 && fm.listing.files.length === 0 && fm.listing.shared.length === 0
+  const loading = fm.loading && hasNothing
+  const empty = !loading && hasNothing
 
   // A brand-new account has no webhook attached yet; surface it instead of an empty folder.
   const [checkedWebhooks, setCheckedWebhooks] = useState(false)
@@ -50,48 +82,45 @@ export function FileExplorer() {
 
   const actions: ExplorerActions = {
     openFolder: (folderId) => fm.openFolder(folderId),
+    openFilePreview: (file) => setPreviewTarget(file),
     folderMenu: (folder) => ({
       rename: () => setRenameTarget({ file: null, folder, mode: 'rename-folder' }),
       delete: () => setDeleteTarget({ file: null, folder }),
     }),
-    fileMenu: (file) => ({
-      onDownload: () => {
-        const anchor = document.createElement('a')
-        anchor.href = downloadUrl(file.id)
-        anchor.download = file.name
-        document.body.appendChild(anchor)
-        anchor.click()
-        anchor.remove()
-      },
-      onVerify: async () => {
-        try {
-          const { result } = await verifyFile(file.id)
-          const ok = result.chunks.filter((chunk) => chunk.ok).length
-          if (result.ok) {
-            toast.success(`"${file.name}" is intact`, {
-              description: `${ok}/${result.chunks.length} chunks verified`,
-            })
-          } else {
-            toast.error(`"${file.name}" failed verification`, {
-              description: `${result.chunks.length - ok} chunk${result.chunks.length - ok === 1 ? '' : 's'} did not match`,
-            })
-          }
-        } catch (error) {
-          toast.error(error instanceof Error ? error.message : 'Could not verify this file')
-        }
-      },
-      onCopyLink: async () => {
-        try {
-          await navigator.clipboard.writeText(`${window.location.origin}${downloadUrl(file.id)}`)
-          toast.success('Share link copied')
-        } catch {
-          toast.error('Could not copy the link')
-        }
-      },
-      onRename: () => setRenameTarget({ file, folder: null, mode: 'rename-file' }),
-      onMove: () => setMoveTarget(file),
-      onDelete: () => setDeleteTarget({ file, folder: null }),
-    }),
+    fileMenu: (file) => {
+      // A row handed to a recipient is read-only here: no share, move, rename or delete.
+      const shared = file.sharedBy !== null
+      return {
+        onDownload: () => startDownload(file),
+        onPreview: () => setPreviewTarget(file),
+        ...(shared
+          ? {}
+          : {
+              onVerify: async () => {
+                try {
+                  const { result } = await verifyFile(file.id)
+                  const ok = result.chunks.filter((chunk) => chunk.ok).length
+                  if (result.ok) {
+                    toast.success(`"${file.name}" is intact`, {
+                      description: `${ok}/${result.chunks.length} chunks verified`,
+                    })
+                  } else {
+                    toast.error(`"${file.name}" failed verification`, {
+                      description: `${result.chunks.length - ok} chunk${result.chunks.length - ok === 1 ? '' : 's'} did not match`,
+                    })
+                  }
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Could not verify this file')
+                }
+              },
+              onCopyLink: () => copyLink(file),
+              onShare: () => setShareTarget(file),
+              onRename: () => setRenameTarget({ file, folder: null, mode: 'rename-file' }),
+              onMove: () => setMoveTarget(file),
+              onDelete: () => setDeleteTarget({ file, folder: null }),
+            }),
+      }
+    },
     onDropFiles: (files, folderId) => {
       // The queue provider toasts each file it queues; no extra summary needed here.
       queue.enqueue(files, folderId)
@@ -142,9 +171,19 @@ export function FileExplorer() {
           <EmptyState variant="webhook" />
         )
       ) : fm.view === 'grid' ? (
-        <FileGrid folders={fm.listing.folders} files={fm.listing.files} actions={actions} />
+        <FileGrid
+          folders={fm.listing.folders}
+          files={fm.listing.files}
+          shared={fm.listing.shared}
+          actions={actions}
+        />
       ) : (
-        <FileList folders={fm.listing.folders} files={fm.listing.files} actions={actions} />
+        <FileList
+          folders={fm.listing.folders}
+          files={fm.listing.files}
+          shared={fm.listing.shared}
+          actions={actions}
+        />
       )}
 
       {(fm.listing.nextCursor || fm.loadingMore) && (
@@ -197,6 +236,27 @@ export function FileExplorer() {
           }}
           fileName={moveTarget.name}
           onCommit={(folderId) => fm.moveFile(moveTarget, folderId)}
+        />
+      )}
+
+      {shareTarget && (
+        <ShareDialog
+          open={shareTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setShareTarget(null)
+          }}
+          file={shareTarget}
+          onSaved={() => fm.reload()}
+        />
+      )}
+
+      {previewTarget && (
+        <PreviewDialog
+          open={previewTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setPreviewTarget(null)
+          }}
+          file={previewTarget}
         />
       )}
     </div>
