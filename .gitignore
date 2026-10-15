@@ -29,6 +29,10 @@ tmp/
 npm-debug.log*
 logs/
 
+# Local session handoff / notes (never committed)
+HANDOFF.md
+NOTES.md
+
 # Editor / OS
 .DS_Store
 .idea/

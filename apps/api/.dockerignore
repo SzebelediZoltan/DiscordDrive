@@ -1,0 +1,14 @@
+.git
+.github
+**/node_modules
+**/dist
+**/.vite
+**/coverage
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+**/.DS_Store
+**/*.log
+README.md
+docker-compose*.yml
